@@ -1,18 +1,16 @@
-# Frontend dependencies
-/frontend/node_modules/
+# Frontend
+/front-end/node_modules/
+/front-end/dist/
+/front-end/.env
 
-# Backend dependencies
+# Backend
 /backend/node_modules/
+/backend/dist/
+/backend/.env
 
 # Environment files
 .env
 .env.*
-!.env.example
-
-# Build folders
-/frontend/.next/
-/frontend/dist/
-/backend/dist/
 
 # Logs
 *.log
