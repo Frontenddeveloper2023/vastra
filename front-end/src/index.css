@@ -1,0 +1,132 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* ── Tailwind v4: define custom theme tokens ── */
+@theme {
+  --color-primary: #6D021B;
+  --color-primary-dark: #520117;
+  --color-primary-light: #8a0222;
+  --color-secondary: #DEA53B;
+  --color-secondary-dark: #c4902a;
+  --color-secondary-light: #f0bb55;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-sans: "Inter", sans-serif;
+  /* Custom animations */
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-fade-in: fadeIn 0.8s ease-in-out;
+  --animate-slide-up: slideUp 0.7s ease-out;
+}
+
+/* ── Keyframe definitions ── */
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  0% {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Safe base layer styles (prevents overriding Tailwind utilities) ── */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: "Inter", sans-serif;
+    background-color: #ffffff;
+    color: #1a1a1a;
+    overflow-x: hidden;
+  }
+}
+
+/* ── Custom utility: gold gradient text ── */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #DEA53B 0%, #f0cc7a 50%, #DEA53B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Mobile Category Card Styling (<500px) ── */
+@media (max-width: 500px) {
+  .category-mobile-card {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .category-mobile-arrow {
+    display: none !important;
+  }
+
+  .category-mobile-count {
+    display: none !important;
+  }
+
+  .category-mobile-text {
+    text-align: center !important;
+    padding-top: 6px !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+  }
+}
+
+/* ── Hero Slider Image Responsive Stretch (<= 768px) ── */
+@media (max-width: 768px) {
+  .hero-slide-image {
+    object-fit: fill !important;
+  }
+}
+
+/* ── Admin Studio Custom Slim Scrollbar ── */
+.admin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #EDE4D8 #FAF7F2;
+}
+
+.admin-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.admin-scrollbar::-webkit-scrollbar-track {
+  background: #FAF7F2;
+  border-radius: 9999px;
+}
+
+.admin-scrollbar::-webkit-scrollbar-thumb {
+  background: #EDE4D8;
+  border-radius: 9999px;
+}
+
+.admin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #DEA53B;
+}

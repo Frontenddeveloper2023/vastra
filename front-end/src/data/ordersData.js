@@ -1,0 +1,161 @@
+import arrival1 from '../assets/products/arrival-1.jpg'
+import arrival2 from '../assets/products/arrival-2.jpg'
+import arrival3 from '../assets/products/arrival-3.jpg'
+
+export const ordersData = [
+  {
+    id: 'ORD-3115-225118',
+    date: '28 July 2026',
+    status: 'Cancelled',
+    statusType: 'cancelled',
+    paymentMethod: 'CCAVENUE',
+    paymentStatus: 'Failed',
+    trackingId: '1234',
+    trackingLink: '#track-package',
+    shippingAddress: {
+      name: 'zubair',
+      street: '123 E-Commerce St,',
+      cityState: 'Kallakkurichchi, tamil nadu -',
+      phone: '+91 98765 43210',
+    },
+    items: [
+      {
+        id: 1,
+        title: 'Pro Max Ultra Phone',
+        qty: 3,
+        price: 40000.0,
+        image:
+          'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=200&auto=format&fit=crop&q=80',
+      },
+      {
+        id: 2,
+        title: 'Smart Watch Series 9',
+        qty: 2,
+        price: 1000.0,
+        image:
+          'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=200&auto=format&fit=crop&q=80',
+      },
+      {
+        id: 3,
+        title: 'Apple 2026 MacBook Air 13',
+        qty: 2,
+        price: 115000.0,
+        image:
+          'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=200&auto=format&fit=crop&q=80',
+      },
+    ],
+    subtotal: 352000.0,
+    gst: 35200.0,
+    shippingFee: 730.0,
+    totalAmount: 387930.0,
+  },
+  {
+    id: '12345',
+    date: '10 Jan 2026',
+    status: 'Delivered',
+    statusType: 'delivered',
+    paymentMethod: 'CCAVENUE',
+    paymentStatus: 'Paid',
+    trackingId: '1234',
+    trackingLink: '#track-package',
+    shippingAddress: {
+      name: 'zubair',
+      street: '124, Lotus Heritage Residency, 4th Cross,',
+      cityState: 'Bangalore, Karnataka - 560038',
+      phone: '+91 98765 43210',
+    },
+    items: [
+      {
+        id: 101,
+        title: 'Maroon Zari Katan Banarasi Saree',
+        qty: 1,
+        price: 8499.0,
+        image: arrival1,
+      },
+      {
+        id: 102,
+        title: 'Rose Floral Tissue Organza Saree',
+        qty: 1,
+        price: 4299.0,
+        image: arrival2,
+      },
+      {
+        id: 103,
+        title: 'Embroidered Raw Silk Blouse Piece',
+        qty: 1,
+        price: 1999.0,
+        image: arrival3,
+      },
+    ],
+    subtotal: 14797.0,
+    gst: 740.0,
+    shippingFee: 0.0,
+    totalAmount: 15537.0,
+  },
+  {
+    id: '12344',
+    date: '06 Jan 2026',
+    status: 'Shipped',
+    statusType: 'shipped',
+    paymentMethod: 'CCAVENUE',
+    paymentStatus: 'Paid',
+    trackingId: 'TRK-54321',
+    trackingLink: '#track-package',
+    shippingAddress: {
+      name: 'zubair',
+      street: '124, Lotus Heritage Residency, 4th Cross,',
+      cityState: 'Bangalore, Karnataka - 560038',
+      phone: '+91 98765 43210',
+    },
+    items: [
+      {
+        id: 201,
+        title: 'Festive Gold Temple Border Saree',
+        qty: 1,
+        price: 5499.0,
+        image: arrival2,
+      },
+    ],
+    subtotal: 5499.0,
+    gst: 275.0,
+    shippingFee: 0.0,
+    totalAmount: 5774.0,
+  },
+  {
+    id: '12343',
+    date: '03 Jan 2026',
+    status: 'Processing',
+    statusType: 'processing',
+    paymentMethod: 'CCAVENUE',
+    paymentStatus: 'Paid',
+    trackingId: 'TRK-11223',
+    trackingLink: '#track-package',
+    shippingAddress: {
+      name: 'zubair',
+      street: '124, Lotus Heritage Residency, 4th Cross,',
+      cityState: 'Bangalore, Karnataka - 560038',
+      phone: '+91 98765 43210',
+    },
+    items: [
+      {
+        id: 301,
+        title: 'Emerald Handloom Silk Saree',
+        qty: 1,
+        price: 6799.0,
+        image: arrival3,
+      },
+      {
+        id: 302,
+        title: 'Traditional Golden Zari Border Stole',
+        qty: 1,
+        price: 2499.0,
+        image: arrival1,
+      },
+    ],
+    subtotal: 9298.0,
+    gst: 465.0,
+    shippingFee: 0.0,
+    totalAmount: 9763.0,
+  },
+]
+
