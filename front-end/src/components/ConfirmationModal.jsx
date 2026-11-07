@@ -73,13 +73,13 @@ export default function ConfirmationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in font-sans"
+      className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 font-sans animate-in fade-in duration-100"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className="bg-white rounded-none-3xl max-w-sm sm:max-w-md w-full p-6 sm:p-7 shadow-2xl border border-[#EDE4D8] animate-scale-up text-center relative overflow-hidden"
+        className="bg-white rounded-none-3xl max-w-sm sm:max-w-md w-full p-6 sm:p-7 shadow-2xl border border-[#EDE4D8] animate-in zoom-in-95 duration-100 text-center relative overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Gold Accent Bar */}

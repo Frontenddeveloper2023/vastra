@@ -1,13 +1,15 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
+import { useCustomerAuth } from '../context/CustomerAuthContext'
 
 export default function MobileBottomNav() {
   const location = useLocation()
   const { totalCount, openCart } = useCart()
+  const { isAuthenticated } = useCustomerAuth()
 
   const isCollections = location.pathname === '/collections'
   const isOrders = location.pathname.startsWith('/orders')
-  const isProfile = location.pathname === '/profile' || location.pathname.startsWith('/addresses')
+  const isProfile = location.pathname === '/profile' || location.pathname.startsWith('/addresses') || location.pathname === '/login'
 
   return (
     <nav
@@ -100,9 +102,9 @@ export default function MobileBottomNav() {
           </span>
         </Link>
 
-        {/* 4. My Account */}
+        {/* 4. My Account / Login */}
         <Link
-          to="/profile"
+          to={isAuthenticated ? "/profile" : "/login"}
           className={`flex flex-col items-center justify-center py-1 px-2 rounded-none-lg transition-all duration-200 group select-none ${isProfile ? 'text-[#5C0317] scale-105' : 'text-[#3E2510] hover:text-[#5C0317]'
             }`}
         >
@@ -123,7 +125,7 @@ export default function MobileBottomNav() {
             className={`text-[9.5px] font-sans tracking-wider uppercase font-semibold leading-tight transition-colors ${isProfile ? 'text-[#5C0317] font-extrabold' : 'text-[#3E2510]'
               }`}
           >
-            Account
+            {isAuthenticated ? 'Account' : 'Login'}
           </span>
         </Link>
       </div>

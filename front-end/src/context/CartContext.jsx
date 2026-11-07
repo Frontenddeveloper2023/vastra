@@ -1,69 +1,21 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import arrival1 from '../assets/products/arrival-1.jpg'
-import arrival2 from '../assets/products/arrival-2.jpg'
-import arrival3 from '../assets/products/arrival-3.jpg'
 
 const CartContext = createContext(null)
 
-const INITIAL_CART = [
-  {
-    id: 1,
-    cartItemId: 'item-init-1',
-    title: 'Maroon Zari Katan Saree',
-    category: 'Banarasi',
-    size: 'Free Size',
-    color: 'Gold',
-    design: 'Zari Woven',
-    material: 'Pure Katan Silk',
-    weight: 850,
-    price: 4999,
-    originalPrice: 6999,
-    image: arrival1,
-    quantity: 1,
-  },
-  {
-    id: 2,
-    cartItemId: 'item-init-2',
-    title: 'Festive Gold Temple Saree',
-    category: 'Kanjivaram',
-    size: 'Free Size',
-    color: 'Crimson',
-    design: 'Temple Border',
-    material: 'Tanchoi Silk',
-    weight: 950,
-    price: 5499,
-    originalPrice: 7999,
-    image: arrival2,
-    quantity: 1,
-  },
-  {
-    id: 3,
-    cartItemId: 'item-init-3',
-    title: 'Emerald Handloom Silk Saree',
-    category: 'Handloom',
-    size: 'Free Size',
-    color: 'Emerald',
-    design: 'Floral Motifs',
-    material: 'Georgette Silk',
-    weight: 700,
-    price: 4299,
-    originalPrice: 5999,
-    image: arrival3,
-    quantity: 1,
-  },
-]
+const CART_STORAGE_KEY = 'vasraa_cart'
+const SELECTED_STORAGE_KEY = 'vasraa_cart_selected_ids'
 
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState(() => {
     try {
-      const saved = localStorage.getItem('vasraa_cart')
+      const saved = localStorage.getItem(CART_STORAGE_KEY)
       if (saved) {
         return JSON.parse(saved)
       }
     } catch (e) {
       console.error('Failed to load cart from storage', e)
     }
-    return INITIAL_CART
+    return []
   })
 
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -71,11 +23,33 @@ export const CartProvider = ({ children }) => {
   // Persist cart to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('vasraa_cart', JSON.stringify(cartItems))
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems))
     } catch (e) {
       console.error('Failed to save cart to storage', e)
     }
   }, [cartItems])
+
+  // Selected item IDs persisted to localStorage so user selection survives refresh
+  const [selectedItemIds, setSelectedItemIds] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SELECTED_STORAGE_KEY)
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch (e) {
+      console.error('Failed to load selected cart items from storage', e)
+    }
+    return []
+  })
+
+  // Persist selected IDs to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(SELECTED_STORAGE_KEY, JSON.stringify(selectedItemIds))
+    } catch (e) {
+      console.error('Failed to save selected cart items to storage', e)
+    }
+  }, [selectedItemIds])
 
   // Helper to extract numeric price
   const parseNumericPrice = (p) => {
@@ -157,25 +131,20 @@ export const CartProvider = ({ children }) => {
   // Remove single item (matches either cartItemId or id)
   const removeFromCart = (keyOrId) => {
     setCartItems((prev) => prev.filter((item) => item.cartItemId !== keyOrId && item.id !== keyOrId))
+    setSelectedItemIds((prev) => prev.filter((id) => id !== keyOrId))
   }
 
   // Clear cart
   const clearCart = () => {
     setCartItems([])
+    setSelectedItemIds([])
   }
 
-  const [selectedItemIds, setSelectedItemIds] = useState(() => {
-    return INITIAL_CART.map((it) => it.cartItemId || it.id)
-  })
-
-  // Keep selected items synced when cartItems changes
+  // Keep selected items synced: prune keys that no longer exist in cart
   useEffect(() => {
     setSelectedItemIds((prev) => {
       const validKeys = cartItems.map((c) => c.cartItemId || c.id)
-      const filtered = prev.filter((id) => validKeys.includes(id))
-      // If newly added item, select it by default
-      const newlyAdded = validKeys.filter((id) => !prev.includes(id))
-      return [...filtered, ...newlyAdded]
+      return prev.filter((id) => validKeys.includes(id))
     })
   }, [cartItems])
 

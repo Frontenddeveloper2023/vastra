@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
 import vastraaLogo from '../../public/slides/logo.png'
 import { useCart } from '../context/CartContext'
+import { useSettings } from '../context/SettingsContext'
 
 export default function Footer() {
   const { openCart } = useCart()
+  const { settings } = useSettings()
 
   return (
     <footer
@@ -30,11 +32,11 @@ export default function Footer() {
             <div className="flex items-center justify-center md:justify-start gap-3.5 mb-4 text-left">
               <img
                 src={vastraaLogo}
-                alt="Vastraa - The House of Sarees"
+                alt={settings.storeName || 'Vastraa - The House of Sarees'}
                 className="w-12 h-12 sm:w-14 sm:h-14 rounded-none-full object-cover shadow-md border border-secondary/50 shrink-0 bg-white"
               />
               <div>
-                <span className="font-serif text-2xl font-bold tracking-[0.18em] text-white uppercase block leading-none">
+                <span className="font-normal text-2xl font-bold tracking-[0.18em] text-white uppercase block leading-none">
                   VASTRAA
                 </span>
                 <span className="text-[10px] tracking-[0.25em] text-secondary font-sans uppercase font-medium mt-1 block">
@@ -52,7 +54,9 @@ export default function Footer() {
             <div className="flex items-center justify-center md:justify-start gap-3">
               {/* Facebook */}
               <a
-                href="#facebook"
+                href={settings.facebook || 'https://facebook.com'}
+                target="_blank"
+                rel="noreferrer"
                 aria-label="Facebook"
                 className="w-9 h-9 rounded-none-full bg-white/10 hover:bg-secondary hover:text-primary-dark text-white/80 flex items-center justify-center transition-all duration-300 hover:scale-105"
               >
@@ -63,7 +67,9 @@ export default function Footer() {
 
               {/* Instagram */}
               <a
-                href="#instagram"
+                href={settings.instagram || 'https://instagram.com'}
+                target="_blank"
+                rel="noreferrer"
                 aria-label="Instagram"
                 className="w-9 h-9 rounded-none-full bg-white/10 hover:bg-secondary hover:text-primary-dark text-white/80 flex items-center justify-center transition-all duration-300 hover:scale-105"
               >
@@ -76,7 +82,9 @@ export default function Footer() {
 
               {/* Twitter / X */}
               <a
-                href="#twitter"
+                href={settings.twitter || 'https://x.com'}
+                target="_blank"
+                rel="noreferrer"
                 aria-label="X Twitter"
                 className="w-9 h-9 rounded-none-full bg-white/10 hover:bg-secondary hover:text-primary-dark text-white/80 flex items-center justify-center transition-all duration-300 hover:scale-105"
               >
@@ -87,7 +95,9 @@ export default function Footer() {
 
               {/* YouTube */}
               <a
-                href="#youtube"
+                href={settings.youtube || 'https://youtube.com'}
+                target="_blank"
+                rel="noreferrer"
                 aria-label="YouTube"
                 className="w-9 h-9 rounded-none-full bg-white/10 hover:bg-secondary hover:text-primary-dark text-white/80 flex items-center justify-center transition-all duration-300 hover:scale-105"
               >
@@ -187,9 +197,14 @@ export default function Footer() {
                 </div>
                 <div>
                   <span className="font-medium text-white block">Flagship Atelier:</span>
-                  <span className="text-xs sm:text-sm text-white/75 leading-relaxed block max-w-xs mx-auto md:mx-0">
-                    Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210
-                  </span>
+                  <a
+                    href={settings.googleMapsUrl || '#'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs sm:text-sm text-white/75 hover:text-secondary leading-relaxed block max-w-xs mx-auto md:mx-0 transition-colors"
+                  >
+                    {settings.atelierAddress || 'Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210'}
+                  </a>
                 </div>
               </li>
 
@@ -203,10 +218,10 @@ export default function Footer() {
                 <div>
                   <span className="text-xs text-white/60 block">Phone Support:</span>
                   <a
-                    href="tel:+919807738888"
+                    href={`tel:${(settings.supportPhone || '+91 9807738888').replace(/\s+/g, '')}`}
                     className="font-medium text-white hover:text-secondary transition-colors duration-200"
                   >
-                    +91 9807738888
+                    {settings.supportPhone || '+91 9807738888'}
                   </a>
                 </div>
               </li>
@@ -221,10 +236,10 @@ export default function Footer() {
                 <div>
                   <span className="text-xs text-white/60 block">Email Us:</span>
                   <a
-                    href="mailto:vastraa@gmail.com"
+                    href={`mailto:${settings.contactEmail || 'vastraa@gmail.com'}`}
                     className="font-medium text-white hover:text-secondary transition-colors duration-200"
                   >
-                    vastraa@gmail.com
+                    {settings.contactEmail || 'vastraa@gmail.com'}
                   </a>
                 </div>
               </li>

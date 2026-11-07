@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
-import { allProductsList } from '../pages/user/collections'
+import { useCustomerAuth } from '../context/CustomerAuthContext'
+import productService from '../services/productService'
+import { getCmsImageUrl } from '../utils/imageHelper'
 
 // Social Media Icons
 const FacebookIcon = () => (
@@ -104,6 +106,7 @@ export default function Navbar() {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const { totalCount, openCart } = useCart()
+  const { isAuthenticated, customer } = useCustomerAuth()
   const navRef = useRef(null)
   const dropdownRef = useRef(null)
   const searchBoxRef = useRef(null)
@@ -113,17 +116,39 @@ export default function Navbar() {
   const [searchParams] = useSearchParams()
   const [navSearch, setNavSearch] = useState('')
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false)
+  const [dbProducts, setDbProducts] = useState([])
+
+  // Load active products from backend DB for real-time search
+  useEffect(() => {
+    productService
+      .getAll({ limit: 100, status: 'Active' })
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.products || []
+        const mapped = list.map((p) => ({
+          id: p._id || p.id,
+          title: p.title,
+          category: p.category || '',
+          fabric: p.variants?.[0]?.material || p.fabric || '',
+          image: getCmsImageUrl(p.image || p.variants?.[0]?.images?.[0] || p.variants?.[0]?.image || ''),
+          price: p.price || 0,
+        }))
+        setDbProducts(mapped)
+      })
+      .catch((err) => {
+        console.error('Navbar failed to fetch products for search:', err)
+      })
+  }, [])
 
   // Filter products for instant dropdown: matches title, category, or fabric
   const searchSuggestions = useMemo(() => {
     const query = navSearch.trim().toLowerCase()
     if (!query) return []
-    return allProductsList.filter((item) =>
+    return dbProducts.filter((item) =>
       item.title.toLowerCase().includes(query) ||
       item.category.toLowerCase().includes(query) ||
       (item.fabric && item.fabric.toLowerCase().includes(query))
     )
-  }, [navSearch])
+  }, [navSearch, dbProducts])
 
   // Sync search input with URL query when on collections page
   useEffect(() => {
@@ -563,12 +588,25 @@ export default function Navbar() {
               {/* Desktop-only: User Account / Profile */}
               <button
                 type="button"
-                onClick={() => navigate('/profile')}
-                aria-label="Account Profile"
-                className={`hidden lg:inline-flex p-1.5 transition-colors cursor-pointer shrink-0 ${scrolled ? 'text-white hover:text-secondary' : 'text-gray-700 hover:text-primary'
+                onClick={() => navigate(isAuthenticated ? '/profile' : '/login')}
+                aria-label={isAuthenticated ? `Account: ${customer?.name || 'Customer'}` : 'Login to Vastraa'}
+                className={`hidden lg:inline-flex items-center gap-1.5 p-1.5 transition-colors cursor-pointer shrink-0 ${scrolled ? 'text-white hover:text-secondary' : 'text-gray-700 hover:text-primary'
                   }`}
               >
-                <UserIcon />
+                {isAuthenticated && customer?.avatar ? (
+                  <img
+                    src={customer.avatar}
+                    alt={customer?.name || 'User'}
+                    className="w-5 h-5 rounded-full object-cover border border-[#DEA53B]"
+                  />
+                ) : (
+                  <UserIcon />
+                )}
+                {isAuthenticated && customer?.name && (
+                  <span className="text-xs font-medium max-w-[80px] truncate hidden xl:inline">
+                    {customer.name.split(' ')[0]}
+                  </span>
+                )}
               </button>
             </div>
           </div>

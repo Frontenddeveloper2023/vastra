@@ -1,86 +1,103 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
+import { useCustomerAuth } from '../../context/CustomerAuthContext'
 import ConfirmationModal from '../../components/ConfirmationModal'
 import AccountSidebar from '../../components/AccountSidebar'
+import notify from '../../utils/toast'
 
 export default function Addresses() {
   const navigate = useNavigate()
   const { openCart, totalCount } = useCart()
+  const { customer, isAuthenticated, addAddress, deleteAddress, updateAddress } = useCustomerAuth()
 
-  const [addresses, setAddresses] = useState([
-    {
-      id: 1,
-      name: 'Jani Doe',
-      type: 'Home',
-      isDefault: true,
-      street: '124, Lotus Heritage Residency, 4th Cross',
-      city: 'Bangalore',
-      state: 'Karnataka',
-      pincode: '560038',
-      phone: '+91 98765 43210',
-    },
-    {
-      id: 2,
-      name: 'Jani Doe',
-      type: 'Office',
-      isDefault: false,
-      street: 'Tower B, 7th Floor, Vasraa Silk Tech Park',
-      city: 'Bangalore',
-      state: 'Karnataka',
-      pincode: '560100',
-      phone: '+91 98765 43210',
-    },
-  ])
+  // Redirect to /login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { state: { from: '/addresses' }, replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  const addresses = (customer?.addresses || []).map((addr) => ({
+    id: addr._id || addr.id,
+    _id: addr._id,
+    name: addr.name || customer?.name || 'Customer',
+    type: addr.type || 'Home',
+    isDefault: Boolean(addr.isDefault),
+    street: addr.street || '',
+    landmark: addr.landmark || '',
+    city: addr.city || '',
+    state: addr.state || '',
+    pincode: addr.pincode || '',
+    phone: addr.phone || customer?.phone || '',
+  }))
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [addressToDelete, setAddressToDelete] = useState(null)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const [newAddr, setNewAddr] = useState({
-    name: 'Jani Doe',
+    name: '',
     type: 'Home',
     street: '',
-    city: 'Bangalore',
-    state: 'Karnataka',
+    landmark: '',
+    city: '',
+    state: 'Tamil Nadu',
     pincode: '',
-    phone: '+91 98765 43210',
+    phone: '',
   })
 
-  const handleAddAddress = (e) => {
-    e.preventDefault()
-    if (!newAddr.street || !newAddr.pincode) return
-    setAddresses((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        ...newAddr,
-        isDefault: false,
-      },
-    ])
-    setShowAddModal(false)
-    setNewAddr({
-      name: 'Jani Doe',
-      type: 'Home',
-      street: '',
-      city: 'Bangalore',
-      state: 'Karnataka',
-      pincode: '',
-      phone: '+91 98765 43210',
-    })
-  }
-
-  const setDefault = (id) => {
-    setAddresses((prev) =>
-      prev.map((a) => ({
-        ...a,
-        isDefault: a.id === id,
+  // Prefill default name/phone from logged in customer
+  useEffect(() => {
+    if (customer) {
+      setNewAddr((prev) => ({
+        ...prev,
+        name: prev.name || customer.name || '',
+        phone: prev.phone || customer.phone || '',
       }))
-    )
+    }
+  }, [customer])
+
+  const handleAddAddress = async (e) => {
+    e.preventDefault()
+    if (!newAddr.street || !newAddr.pincode) {
+      notify.error('Please enter street and pincode.')
+      return
+    }
+
+    setSaving(true)
+    const res = await addAddress({
+      ...newAddr,
+      isDefault: addresses.length === 0,
+    })
+    setSaving(false)
+
+    if (res.success) {
+      notify.success('New address added!')
+      setShowAddModal(false)
+      setNewAddr({
+        name: customer?.name || '',
+        type: 'Home',
+        street: '',
+        landmark: '',
+        city: '',
+        state: 'Tamil Nadu',
+        pincode: '',
+        phone: customer?.phone || '',
+      })
+    } else {
+      notify.error(res.error || 'Failed to add address')
+    }
   }
 
-  const deleteAddress = (id) => {
-    setAddresses((prev) => prev.filter((a) => a.id !== id))
+  const setDefault = async (id) => {
+    const res = await updateAddress(id, { isDefault: true })
+    if (res.success) {
+      notify.success('Default address updated')
+    } else {
+      notify.error(res.error || 'Failed to set default address')
+    }
   }
 
   const handleDeleteClick = (addr) => {
@@ -88,9 +105,14 @@ export default function Addresses() {
     setIsDeleteModalOpen(true)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (addressToDelete) {
-      deleteAddress(addressToDelete.id)
+      const res = await deleteAddress(addressToDelete.id || addressToDelete._id)
+      if (res.success) {
+        notify.success('Address removed')
+      } else {
+        notify.error(res.error || 'Failed to delete address')
+      }
     }
     setIsDeleteModalOpen(false)
     setAddressToDelete(null)
@@ -111,7 +133,7 @@ export default function Addresses() {
           <div className="w-full md:col-span-8 lg:col-span-8 bg-white rounded-none-2xl sm:rounded-none-3xl border border-[#EDE4D8] p-6 sm:p-8 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#EAE1D5]">
               <div>
-                <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#1F1713]">
+                <h1 className="font-normal text-xl sm:text-2xl font-bold text-[#1F1713]">
                   My Addresses
                 </h1>
 
@@ -139,7 +161,7 @@ export default function Addresses() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-serif text-base font-bold text-[#1F1713]">
+                        <span className="font-normal text-base font-bold text-[#1F1713]">
                           {addr.name}
                         </span>
 
@@ -206,7 +228,7 @@ export default function Addresses() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-4 border-b border-[#EAE1D5]">
-              <h3 className="font-serif text-lg sm:text-xl font-bold text-[#1F1713]">
+              <h3 className="font-normal text-lg sm:text-xl font-bold text-[#1F1713]">
                 Add New Delivery Address
               </h3>
               <button

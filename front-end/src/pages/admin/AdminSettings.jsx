@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Save,
   MapPin,
@@ -15,10 +15,12 @@ import {
   X,
 } from 'lucide-react'
 import { useShipping } from '../../context/ShippingContext'
+import { useSettings } from '../../context/SettingsContext'
 import { AdminDeleteButton, AdminSaveButton } from '../../components/admin/AdminUI'
 
 export default function AdminSettings() {
   const [saved, setSaved] = useState(false)
+  const { settings: globalSettings, updateSettings } = useSettings()
   const {
     shippingSettings,
     updateWeightSettings,
@@ -45,27 +47,52 @@ export default function AdminSettings() {
   const [editCityError, setEditCityError] = useState('')
 
   const [settings, setSettings] = useState({
-    // Store Identity
-    storeName: 'Vastraa - The House of Sarees',
-    contactEmail: 'vastraa@gmail.com',
-    supportPhone: '+91 9807738888',
-    atelierAddress: 'Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210',
-    googleMapsUrl: 'https://maps.google.com/?q=Tambaram+Urapakkam+Chennai',
-
-    // Social Media Links
-    instagram: 'https://instagram.com/vastraasarees',
-    facebook: 'https://facebook.com/vastraasarees',
-    twitter: 'https://x.com/vastraasarees',
-    youtube: 'https://youtube.com/@vastraasarees',
-
-    // Shipping & Delivery general info
-    estimatedDays: '3 to 5 business days',
-
-    // Admin Auth (OTP Only)
-    adminPhone: '+91 9807738888',
-    adminEmail: 'admin@vastraa.com',
-    authMethod: 'OTP Only (SMS & Email)',
+    storeName: globalSettings.storeName || 'Vastraa - The House of Sarees',
+    contactEmail: globalSettings.contactEmail || 'vastraa@gmail.com',
+    supportPhone: globalSettings.supportPhone || '+91 9807738888',
+    atelierAddress: globalSettings.atelierAddress || 'Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210',
+    googleMapsUrl: globalSettings.googleMapsUrl || 'https://maps.google.com/?q=Tambaram+Urapakkam+Chennai',
+    instagram: globalSettings.instagram || 'https://instagram.com/vastraasarees',
+    facebook: globalSettings.facebook || 'https://facebook.com/vastraasarees',
+    twitter: globalSettings.twitter || 'https://x.com/vastraasarees',
+    youtube: globalSettings.youtube || 'https://youtube.com/@vastraasarees',
+    estimatedDays: globalSettings.estimatedDays || '3 to 5 business days',
+    adminPhone: globalSettings.adminPhone || '+91 9807738888',
+    adminEmail: globalSettings.adminEmail || 'admin@vastraa.com',
+    authMethod: globalSettings.authMethod || 'OTP Only (SMS & Email)',
   })
+
+  // Keep local form in sync when globalSettings finishes loading from DB
+  useEffect(() => {
+    if (globalSettings) {
+      setSettings({
+        storeName: globalSettings.storeName || '',
+        contactEmail: globalSettings.contactEmail || '',
+        supportPhone: globalSettings.supportPhone || '',
+        atelierAddress: globalSettings.atelierAddress || '',
+        googleMapsUrl: globalSettings.googleMapsUrl || '',
+        instagram: globalSettings.instagram || '',
+        facebook: globalSettings.facebook || '',
+        twitter: globalSettings.twitter || '',
+        youtube: globalSettings.youtube || '',
+        estimatedDays: globalSettings.estimatedDays || '',
+        adminPhone: globalSettings.adminPhone || '',
+        adminEmail: globalSettings.adminEmail || '',
+        authMethod: globalSettings.authMethod || 'OTP Only (SMS & Email)',
+      })
+    }
+  }, [globalSettings])
+
+  useEffect(() => {
+    if (shippingSettings?.weightBased) {
+      setWeightForm({
+        initialWeightKg: shippingSettings.weightBased.initialWeightKg,
+        initialWeightCost: shippingSettings.weightBased.initialWeightCost,
+        incrementGrams: shippingSettings.weightBased.incrementGrams,
+        incrementCost: shippingSettings.weightBased.incrementCost,
+      })
+    }
+  }, [shippingSettings])
 
   const handleChange = (field, value) => {
     setSettings((prev) => ({ ...prev, [field]: value }))
@@ -128,15 +155,32 @@ export default function AdminSettings() {
     setEditCityError('')
   }
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault()
-    // Save weight settings to shipping context
+
+    // 1. Save weight settings to shipping context and DB
     updateWeightSettings({
       initialWeightKg: Number(weightForm.initialWeightKg) || 1,
       initialWeightCost: Number(weightForm.initialWeightCost) || 0,
       incrementGrams: Number(weightForm.incrementGrams) || 200,
       incrementCost: Number(weightForm.incrementCost) || 0,
     })
+
+    // 2. Save store identity, social links, and admin email to MongoDB
+    await updateSettings({
+      ...settings,
+      shipping: {
+        weightBased: {
+          enabled: true,
+          initialWeightKg: Number(weightForm.initialWeightKg) || 1,
+          initialWeightCost: Number(weightForm.initialWeightCost) || 0,
+          incrementGrams: Number(weightForm.incrementGrams) || 200,
+          incrementCost: Number(weightForm.incrementCost) || 0,
+        },
+        cityBased: shippingSettings.cityBased,
+      },
+    })
+
     setSaved(true)
     setTimeout(() => setSaved(false), 3000)
   }

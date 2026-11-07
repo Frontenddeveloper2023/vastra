@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function StyleDirectionSection() {
   const { cmsData } = useHomeCMS()
   const sectionData = cmsData?.styleDirection || {}
   const moods = sectionData.moods || []
-  const bannerImg = sectionData.backgroundImage || `${import.meta.env.BASE_URL || '/'}slides/banner.png`
+  const bannerImg = getCmsImageUrl(sectionData.backgroundImage, `${import.meta.env.BASE_URL || '/'}slides/banner.png`)
 
   return (
     <section className="w-full relative overflow-hidden m-0 p-0">
@@ -71,7 +72,7 @@ export default function StyleDirectionSection() {
                     {/* Portrait Image Frame - sharp corners with zoom */}
                     <div className="relative aspect-[3/4] sm:aspect-[4/5] w-full overflow-hidden rounded-none-none bg-[#20151B]">
                       <img
-                        src={mood.image}
+                        src={getCmsImageUrl(mood.image)}
                         alt={mood.title}
                         loading="lazy"
                         className="h-full w-full object-cover object-center transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-110"

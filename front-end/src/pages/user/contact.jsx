@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Mail, Phone, CheckCircle2, Send, Sparkles } from 'lucide-react'
-
+import { useSettings } from '../../context/SettingsContext'
 
 export default function Contact() {
+  const { settings } = useSettings()
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -62,10 +63,14 @@ export default function Contact() {
             <h3 className="text-lg font-bold text-[#1F1713] mb-2 font-serif group-hover:text-primary transition-colors">
               Address
             </h3>
-            <p className="text-xs sm:text-sm text-[#6B5E55] leading-relaxed max-w-xs">
-              Plot No 1, 3rd Street, tambaram, Urapakkam,<br />
-              Chennai - 603 210
-            </p>
+            <a
+              href={settings.googleMapsUrl || '#'}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs sm:text-sm text-[#6B5E55] hover:text-primary leading-relaxed max-w-xs transition-colors"
+            >
+              {settings.atelierAddress || 'Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210'}
+            </a>
           </div>
 
           {/* Card 2: Email */}
@@ -77,10 +82,10 @@ export default function Contact() {
               Email
             </h3>
             <a
-              href="mailto:vastraa@gmail.com"
+              href={`mailto:${settings.contactEmail || 'vastraa@gmail.com'}`}
               className="text-xs sm:text-sm text-[#6B5E55] hover:text-primary font-medium transition-colors"
             >
-              vastraa@gmail.com
+              {settings.contactEmail || 'vastraa@gmail.com'}
             </a>
           </div>
 
@@ -93,10 +98,10 @@ export default function Contact() {
               Phone
             </h3>
             <a
-              href="tel:+919807738888"
+              href={`tel:${(settings.supportPhone || '+91 9807738888').replace(/\s+/g, '')}`}
               className="text-xs sm:text-sm text-[#6B5E55] hover:text-primary font-medium transition-colors"
             >
-              +91 9807738888
+              {settings.supportPhone || '+91 9807738888'}
             </a>
           </div>
 
@@ -110,7 +115,7 @@ export default function Contact() {
 
             {/* Small Gold Secondary Tag */}
             <div className="flex items-center gap-1.5 text-secondary text-xs font-bold uppercase tracking-widest mb-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
+              
               <span>We Are Here For You</span>
             </div>
 

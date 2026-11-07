@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 // Renamed and Curated Desktop Banners (fallback)
 import desktopTravel from '../../../public/slides/slide7.png'
@@ -45,12 +46,11 @@ const fallbackSlides = [
 export default function HeroSlider() {
   const { cmsData } = useHomeCMS()
 
-  // Filter active banners from CMS or fall back to defaults
+  // Filter banners from CMS or fall back to defaults
   const slides = useMemo(() => {
     const raw = cmsData?.heroBanners
     if (Array.isArray(raw) && raw.length > 0) {
-      const activeOnly = raw.filter((b) => b.active !== false)
-      if (activeOnly.length > 0) return activeOnly
+      return raw
     }
     return fallbackSlides
   }, [cmsData?.heroBanners])
@@ -102,7 +102,7 @@ export default function HeroSlider() {
           >
             {/* Full-bleed portrait image */}
             <img
-              src={s.mobileImage}
+              src={getCmsImageUrl(s.mobileImage || s.image)}
               alt={s.title}
               className="absolute inset-0 w-full h-full object-cover object-center"
             />
@@ -141,7 +141,7 @@ export default function HeroSlider() {
               }`}
           >
             <img
-              src={s.image}
+              src={getCmsImageUrl(s.image)}
               alt={s.title}
               className="h-full w-full object-cover object-center"
             />

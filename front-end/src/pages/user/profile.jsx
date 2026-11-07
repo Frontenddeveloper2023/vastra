@@ -1,33 +1,77 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AccountSidebar from '../../components/AccountSidebar'
+import { useCustomerAuth } from '../../context/CustomerAuthContext'
+import notify from '../../utils/toast'
 
 export default function Profile() {
-  const [profileData, setProfileData] = useState({
-    fullName: 'Jani Doe',
-    email: 'jani@example.com',
-    phone: '+1 234 567 890',
-    dob: '1995-01-01',
-    pushNotifications: true,
-    emailUpdates: true,
-    darkMode: false,
-  })
+  const { customer, token, isAuthenticated, refreshCustomer } = useCustomerAuth()
+  const navigate = useNavigate()
 
+  const [profileData, setProfileData] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+  })
+  const [saving, setSaving] = useState(false)
   const [savedNotification, setSavedNotification] = useState(false)
 
+  // Redirect to /login if not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { state: { from: '/profile' }, replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  // Populate data from customer object
+  useEffect(() => {
+    if (customer) {
+      setProfileData({
+        fullName: customer.name || '',
+        email: customer.email || '',
+        phone: customer.phone || '',
+      })
+    }
+  }, [customer])
+
   const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
+    const { name, value } = e.target
     setProfileData((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
+      [name]: value,
     }))
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    setSavedNotification(true)
-    setTimeout(() => {
-      setSavedNotification(false)
-    }, 2500)
+    setSaving(true)
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const res = await fetch(`${API_BASE}/customers/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: profileData.fullName,
+          phone: profileData.phone,
+        }),
+      })
+      const result = await res.json()
+      if (result.success) {
+        setSavedNotification(true)
+        notify.success('Profile saved successfully!')
+        if (refreshCustomer) refreshCustomer()
+        setTimeout(() => setSavedNotification(false), 3000)
+      } else {
+        notify.error(result.message || 'Failed to update profile')
+      }
+    } catch (err) {
+      notify.error(err.message || 'Error updating profile')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -43,7 +87,7 @@ export default function Profile() {
           {/* ─── RIGHT MAIN CONTENT: Edit Profile Form ─── */}
           <div className="w-full md:col-span-8 lg:col-span-8 bg-white rounded-none-2xl sm:rounded-none-3xl border border-[#EDE4D8] p-6 sm:p-8 shadow-sm">
             <div className="border-b border-[#F0E8DC]">
-              <h1 className="font-serif text-xl sm:text-2xl font-bold text-[#1F1713]">
+              <h1 className="font-normal text-xl sm:text-2xl font-bold text-[#1F1713]">
                 Edit Profile
               </h1>
 
@@ -81,10 +125,11 @@ export default function Profile() {
                     type="email"
                     name="email"
                     value={profileData.email}
-                    onChange={handleChange}
-                    required
-                    className="w-full bg-[#FAF7F2] border border-[#E3D7C7] rounded-none-xl px-4 py-3 text-xs sm:text-sm text-[#1F1713] focus:bg-white focus:outline-none focus:border-primary transition-all"
+                    disabled
+                    readOnly
+                    className="w-full bg-[#F5EFE6] border border-[#E3D7C7] rounded-none-xl px-4 py-3 text-xs sm:text-sm text-[#73655B] cursor-not-allowed opacity-80"
                   />
+                  <p className="text-[10px] text-stone-400 mt-1">Email is verified with your account</p>
                 </div>
               </div>
 
@@ -111,9 +156,10 @@ export default function Profile() {
               <div className="pt-4 flex justify-end">
                 <button
                   type="submit"
-                  className="bg-primary hover:bg-primary-dark text-white font-medium text-xs sm:text-sm px-8 py-3.5 rounded-none-full transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 cursor-pointer"
+                  disabled={saving}
+                  className="bg-primary hover:bg-primary-dark text-white font-medium text-xs sm:text-sm px-8 py-3.5 rounded-none-full transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-50"
                 >
-                  Save Changes
+                  {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

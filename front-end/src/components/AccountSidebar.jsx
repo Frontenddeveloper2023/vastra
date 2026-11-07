@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import notify from '../utils/toast'
+import { useConfirm } from '../context/ConfirmModalContext'
 import { useCart } from '../context/CartContext'
+import { useCustomerAuth } from '../context/CustomerAuthContext'
 import {
   User,
   Package,
@@ -14,7 +17,9 @@ import {
 export default function AccountSidebar({ active }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const confirm = useConfirm()
   const { openCart, totalCount } = useCart()
+  const { logout, customer } = useCustomerAuth()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   // Auto-detect current active tab if not explicitly passed
@@ -86,10 +91,21 @@ export default function AccountSidebar({ active }) {
     }
   }
 
-  const handleLogout = () => {
-    setMobileMenuOpen(false)
-    alert('Logged out successfully.')
-    navigate('/')
+  const handleLogout = async () => {
+    const isConfirmed = await confirm({
+      title: 'Sign Out Confirmation',
+      message: 'Are you sure you want to sign out of your customer account?',
+      confirmText: 'Sign Out',
+      cancelText: 'Cancel',
+      type: 'logout',
+    })
+
+    if (isConfirmed) {
+      logout()
+      setMobileMenuOpen(false)
+      notify.success('Logged out successfully.')
+      navigate('/')
+    }
   }
 
   return (

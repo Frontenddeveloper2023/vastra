@@ -1,13 +1,33 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import './index.css'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
 import CartDrawer from './components/CartDrawer'
+import CustomerAuthModal from './components/CustomerAuthModal'
 import ScrollToTop from './components/ScrollToTop'
 import MobileBottomNav from './components/MobileBottomNav'
 import { CartProvider } from './context/CartContext'
 import { ShippingProvider } from './context/ShippingContext'
 import { HomeCMSProvider } from './context/HomeCMSContext'
+import { SettingsProvider } from './context/SettingsContext'
+import { CustomerAuthProvider } from './context/CustomerAuthContext'
+import { AdminAuthProvider } from './context/AdminAuthContext'
+import { ConfirmModalProvider } from './context/ConfirmModalContext'
+import { GoogleOAuthProvider } from '@react-oauth/google'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from 'react-hot-toast'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes cache
+      refetchOnWindowFocus: false,
+    },
+  },
+})
+
+// Google Client ID
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1047123456789-vastraagoogleclient.apps.googleusercontent.com'
 
 // User Pages
 import Home from './pages/user/home'
@@ -20,6 +40,7 @@ import ProductDetails from './pages/user/productDetails'
 import Contact from './pages/user/contact'
 import About from './pages/user/about'
 import Checkout from './pages/user/checkout'
+import Login from './pages/user/login'
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout'
@@ -40,82 +61,131 @@ export const BASE_URL = import.meta.env.BASE_URL
 
 // Customer Storefront Layout (includes user navbar, cart drawer, and footer)
 function UserLayout() {
+  const location = useLocation()
+  const isLoginPage = location.pathname === '/login'
+
   return (
     <div
       className="min-h-screen bg-[#110907] font-sans overflow-x-hidden flex flex-col justify-between"
       data-base-url={BASE_URL}
     >
-      {/* Global Sticky Luxury Navbar */}
-      <Navbar />
+      {/* Global Sticky Luxury Navbar (Hidden on Login page for clean distraction-free UI) */}
+      {!isLoginPage && <Navbar />}
 
       {/* Global Cart Drawer Popup */}
       <CartDrawer />
+
+      {/* Global Customer Auth Modal (Google & Email OTP) */}
+      <CustomerAuthModal />
 
       {/* Main Page View */}
       <main className="w-full flex-1">
         <Outlet />
       </main>
 
-      {/* Global Footer */}
-      <div className="pb-16 lg:pb-0 bg-primary">
-        <Footer />
-      </div>
+      {/* Global Footer (Hidden on Login page) */}
+      {!isLoginPage && (
+        <div className="pb-16 lg:pb-0 bg-primary">
+          <Footer />
+        </div>
+      )}
 
-      {/* Mobile Sticky Luxury Bottom Navigation */}
-      <MobileBottomNav />
+      {/* Mobile Sticky Luxury Bottom Navigation (Hidden on Login page) */}
+      {!isLoginPage && <MobileBottomNav />}
     </div>
   )
 }
 
 function App() {
   return (
-    <HomeCMSProvider>
-      <ShippingProvider>
-        <CartProvider>
-          <BrowserRouter basename={import.meta.env.BASE_URL}>
-            {/* Automatically scroll to top on any page navigation */}
-            <ScrollToTop />
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <CustomerAuthProvider>
+            <AdminAuthProvider>
+              <HomeCMSProvider>
+                <ShippingProvider>
+                  <CartProvider>
+                    <ConfirmModalProvider>
+                  <BrowserRouter basename={import.meta.env.BASE_URL}>
+                  {/* Automatically scroll to top on any page navigation */}
+                  <ScrollToTop />
 
-            <Routes>
-              {/* ─── Customer Storefront Routes ─── */}
-              <Route element={<UserLayout />}>
-                <Route path="/" element={<Home />} />
-                <Route path="/collections" element={<Collections />} />
-                <Route path="/product/:id" element={<ProductDetails />} />
-                <Route path="/collections/:id" element={<ProductDetails />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/orders" element={<Orders />} />
-                <Route path="/orders/:id" element={<OrderDetails />} />
-                <Route path="/addresses" element={<Addresses />} />
-                <Route path="/contact" element={<Contact />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/checkout" element={<Checkout />} />
-              </Route>
+                  {/* Global Luxury Toast Notifications */}
+                  <Toaster
+                    position="top-right"
+                    toastOptions={{
+                      duration: 4000,
+                      style: {
+                        background: '#FAF7F2',
+                        color: '#1F1713',
+                        border: '1px solid #EDE4D8',
+                        borderRadius: '0px',
+                        fontSize: '13px',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
+                      },
+                      success: {
+                        iconTheme: {
+                          primary: '#059669',
+                          secondary: '#ffffff',
+                        },
+                      },
+                      error: {
+                        iconTheme: {
+                          primary: '#DC2626',
+                          secondary: '#ffffff',
+                        },
+                      },
+                    }}
+                  />
 
-              {/* ─── Admin Studio Routes ─── */}
-              <Route path="/admin" element={<AdminLayout />}>
-                <Route index element={<AdminDashboard />} />
-                <Route path="products" element={<AdminProducts />} />
-                <Route path="categories" element={<Navigate to="/admin/products" replace />} />
-                <Route path="orders" element={<AdminOrders />} />
-                <Route path="banners" element={<Navigate to="/admin/home-cms" replace />} />
-                <Route path="customers" element={<AdminCustomers />} />
-                <Route path="home-cms" element={<AdminHomeCMS />} />
-                <Route path="notifications" element={<AdminNotifications />} />
-                <Route path="reports" element={<AdminReports />} />
-                <Route path="settings" element={<AdminSettings />} />
-              </Route>
+                  <Routes>
+                    {/* ─── Customer Storefront Routes ─── */}
+                    <Route element={<UserLayout />}>
+                      <Route path="/" element={<Home />} />
+                      <Route path="/collections" element={<Collections />} />
+                      <Route path="/product/:id" element={<ProductDetails />} />
+                      <Route path="/collections/:id" element={<ProductDetails />} />
+                      <Route path="/profile" element={<Profile />} />
+                      <Route path="/orders" element={<Orders />} />
+                      <Route path="/orders/:id" element={<OrderDetails />} />
+                      <Route path="/addresses" element={<Addresses />} />
+                      <Route path="/contact" element={<Contact />} />
+                      <Route path="/about" element={<About />} />
+                      <Route path="/checkout" element={<Checkout />} />
+                      <Route path="/login" element={<Login />} />
+                    </Route>
 
-              {/* Admin OTP Login */}
-              <Route path="/admin/login" element={<AdminLogin />} />
+                    {/* ─── Admin Studio Routes ─── */}
+                    <Route path="/admin" element={<AdminLayout />}>
+                      <Route index element={<AdminDashboard />} />
+                      <Route path="products" element={<AdminProducts />} />
+                      <Route path="categories" element={<Navigate to="/admin/products" replace />} />
+                      <Route path="orders" element={<AdminOrders />} />
+                      <Route path="banners" element={<Navigate to="/admin/home-cms" replace />} />
+                      <Route path="customers" element={<AdminCustomers />} />
+                      <Route path="home-cms" element={<AdminHomeCMS />} />
+                      <Route path="notifications" element={<AdminNotifications />} />
+                      <Route path="reports" element={<AdminReports />} />
+                      <Route path="settings" element={<AdminSettings />} />
+                    </Route>
 
-              {/* Fallback to Home for unmatched paths */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </CartProvider>
-      </ShippingProvider>
-    </HomeCMSProvider>
+                    {/* Admin OTP Login */}
+                    <Route path="/admin/login" element={<AdminLogin />} />
+
+                    {/* Fallback to Home for unmatched paths */}
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                  </Routes>
+                </BrowserRouter>
+              </ConfirmModalProvider>
+            </CartProvider>
+            </ShippingProvider>
+          </HomeCMSProvider>
+        </AdminAuthProvider>
+        </CustomerAuthProvider>
+        </SettingsProvider>
+      </QueryClientProvider>
+    </GoogleOAuthProvider>
   )
 }
 

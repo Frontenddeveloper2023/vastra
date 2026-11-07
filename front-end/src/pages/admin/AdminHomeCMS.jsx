@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo,useEffect } from 'react'
+import notify from '../../utils/toast'
+import { useConfirm } from '../../context/ConfirmModalContext'
 import {
   Sparkles,
   Layers,
@@ -22,10 +24,13 @@ import {
   Laptop,
 } from 'lucide-react'
 import { useHomeCMS } from '../../context/HomeCMSContext'
-import { allProductsList } from '../user/collections'
+import productService from '../../services/productService'
+import homeCmsService from '../../services/homeCmsService'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 import { AdminSaveButton, AdminCancelButton } from '../../components/admin/AdminUI'
 
 export default function AdminHomeCMS() {
+  const confirm = useConfirm()
   const {
     cmsData,
     updateHeroBanners,
@@ -42,6 +47,18 @@ export default function AdminHomeCMS() {
 
   const [activeTab, setActiveTab] = useState('banners') // 'banners' | 'moods' | 'categories' | 'arrivals' | 'showcase'
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('')
+
+  // Live products fetched directly from MongoDB
+  const [dbProducts, setDbProducts] = useState([])
+  useEffect(() => {
+    productService
+      .getAll({ limit: 100 })
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.products || []
+        setDbProducts(list)
+      })
+      .catch((err) => console.error('Failed to load products from DB:', err))
+  }, [])
 
   // -------------------------------------------------------------
   // TAB 0: Hero Banners State
@@ -83,43 +100,70 @@ export default function AdminHomeCMS() {
     setIsBannerModalOpen(true)
   }
 
-  const handleDeleteBanner = (id) => {
+  const handleDeleteBanner = async (id) => {
     if ((cmsData.heroBanners || []).length <= 1) {
-      alert('You must keep at least 1 banner for the hero slider.')
+      notify.error('You must keep at least 1 banner for the hero slider.')
       return
     }
-    if (window.confirm('Delete this banner from the hero slider?')) {
+
+    const isConfirmed = await confirm({
+      title: 'Delete Hero Banner',
+      message: 'Are you sure you want to delete this banner from the hero slider?',
+      confirmText: 'Delete Banner',
+      cancelText: 'Cancel',
+      type: 'danger',
+    })
+
+    if (isConfirmed) {
       removeHeroBanner(id)
       showSaved('Banner removed successfully!')
+      notify.success('Banner removed successfully!')
     }
   }
 
-  const handleToggleBannerActive = (id) => {
-    const banner = (cmsData.heroBanners || []).find((b) => b.id === id)
-    if (banner) {
-      updateSingleHeroBanner(id, { active: !banner.active })
-      showSaved(`Banner ${!banner.active ? 'activated' : 'deactivated'}!`)
-    }
-  }
-
-  const handleBannerImageUpload = (field, e) => {
+  const handleBannerImageUpload = async (e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setBannerFormData((prev) => ({ ...prev, [field]: reader.result }))
-        if (bannerErrors[field]) {
-          setBannerErrors((prev) => ({ ...prev, [field]: null }))
-        }
+    if (!file) return
+
+    const toastId = notify.loading?.('Uploading desktop banner photo...')
+    try {
+      const uploadedPath = await homeCmsService.uploadImage(file, 'banner')
+      if (toastId) notify.dismiss?.(toastId)
+      if (uploadedPath) {
+        setBannerFormData((prev) => ({ ...prev, image: uploadedPath }))
+        if (bannerErrors.image) setBannerErrors((prev) => ({ ...prev, image: null }))
+        notify.success('Desktop banner image uploaded')
       }
-      reader.readAsDataURL(file)
+    } catch (err) {
+      if (toastId) notify.dismiss?.(toastId)
+      console.error('Banner upload error:', err)
+      notify.error('Failed to upload banner image')
     }
   }
 
-  const handleSaveBannerModal = (e) => {
+  const handleMobileBannerImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const toastId = notify.loading?.('Uploading mobile screen banner photo...')
+    try {
+      const uploadedPath = await homeCmsService.uploadImage(file, 'banner-mobile')
+      if (toastId) notify.dismiss?.(toastId)
+      if (uploadedPath) {
+        setBannerFormData((prev) => ({ ...prev, mobileImage: uploadedPath }))
+        notify.success('Mobile screen banner image uploaded')
+      }
+    } catch (err) {
+      if (toastId) notify.dismiss?.(toastId)
+      console.error('Mobile banner upload error:', err)
+      notify.error('Failed to upload mobile banner image')
+    }
+  }
+
+  const handleSaveBannerModal = async (e) => {
     e.preventDefault()
     const errs = {}
-    if (!bannerFormData.image) errs.image = 'Desktop banner image is required'
+    if (!bannerFormData.image) errs.image = 'Banner image is required'
     if (!bannerFormData.buttonText?.trim()) errs.buttonText = 'Button text is required'
     if (!bannerFormData.buttonLink?.trim()) errs.buttonLink = 'Target link is required'
 
@@ -128,56 +172,103 @@ export default function AdminHomeCMS() {
       return
     }
 
-    if (editingBanner) {
-      updateSingleHeroBanner(editingBanner.id, {
-        ...bannerFormData,
-      })
-      showSaved('Banner updated successfully!')
-    } else {
-      addHeroBanner(bannerFormData)
-      showSaved('New banner added to homepage slider!')
+    try {
+      if (editingBanner) {
+        await updateSingleHeroBanner(editingBanner.id || editingBanner._id, {
+          ...bannerFormData,
+        })
+        showSaved('Banner updated successfully!')
+        notify.success('Banner updated successfully!')
+      } else {
+        await addHeroBanner(bannerFormData)
+        showSaved('New banner added to homepage slider!')
+        notify.success('New banner added!')
+      }
+      setIsBannerModalOpen(false)
+    } catch (err) {
+      notify.error('Failed to save banner')
     }
-    setIsBannerModalOpen(false)
   }
 
   // -------------------------------------------------------------
   // TAB 1: Fashion For Every Mood State
   // -------------------------------------------------------------
   const [styleDirectionForm, setStyleDirectionForm] = useState(() => ({
-    title: cmsData.styleDirection.title,
-    highlightTitle: cmsData.styleDirection.highlightTitle,
-    description: cmsData.styleDirection.description,
-    buttonText: cmsData.styleDirection.buttonText,
-    buttonUrl: cmsData.styleDirection.buttonUrl,
-    backgroundImage: cmsData.styleDirection.backgroundImage,
-    moods: JSON.parse(JSON.stringify(cmsData.styleDirection.moods || [])),
+    title: cmsData.styleDirection?.title || 'Fashion For',
+    highlightTitle: cmsData.styleDirection?.highlightTitle || 'Every Mood',
+    description: cmsData.styleDirection?.description || '',
+    buttonText: cmsData.styleDirection?.buttonText || 'Shop All Moods',
+    buttonUrl: cmsData.styleDirection?.buttonUrl || '/collections',
+    backgroundImage: cmsData.styleDirection?.backgroundImage || '',
+    moods: JSON.parse(JSON.stringify(cmsData.styleDirection?.moods || [])),
   }))
+
+  // Keep local form in sync whenever cmsData loads from backend
+  useEffect(() => {
+    if (cmsData.styleDirection) {
+      setStyleDirectionForm({
+        title: cmsData.styleDirection.title || 'Fashion For',
+        highlightTitle: cmsData.styleDirection.highlightTitle || 'Every Mood',
+        description: cmsData.styleDirection.description || '',
+        buttonText: cmsData.styleDirection.buttonText || 'Shop All Moods',
+        buttonUrl: cmsData.styleDirection.buttonUrl || '/collections',
+        backgroundImage: cmsData.styleDirection.backgroundImage || '',
+        moods: JSON.parse(JSON.stringify(cmsData.styleDirection.moods || [])),
+      })
+    }
+  }, [cmsData.styleDirection])
+
+  // If moods is empty (e.g. first load), ensure default 3 cards are present
+  useEffect(() => {
+    if (!styleDirectionForm.moods || styleDirectionForm.moods.length === 0) {
+      setStyleDirectionForm((prev) => ({
+        ...prev,
+        moods: [
+          { id: '1', title: 'CASUAL', subtitle: 'Effortless Everyday Drapes', image: '', url: '/collections?category=Bandhani' },
+          { id: '2', title: 'FORMAL', subtitle: 'Classic Pure Handlooms', image: '', url: '/collections?category=Georgette' },
+          { id: '3', title: 'PARTY', subtitle: 'Grand Zari & Shimmer Silks', image: '', url: '/collections?category=Bandhani' },
+        ],
+      }))
+    }
+  }, [styleDirectionForm.moods])
 
   const [styleErrors, setStyleErrors] = useState({})
 
   // Background image file upload
-  const handleBgImageUpload = (e) => {
+  const handleBgImageUpload = async (e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setStyleDirectionForm((prev) => ({ ...prev, backgroundImage: reader.result }))
+    if (!file) return
+    const toastId = notify.loading?.('Uploading background image...')
+    try {
+      const uploadedPath = await homeCmsService.uploadImage(file, 'mood-bg')
+      if (toastId) notify.dismiss?.(toastId)
+      if (uploadedPath) {
+        setStyleDirectionForm((prev) => ({ ...prev, backgroundImage: uploadedPath }))
+        notify.success('Background image uploaded')
       }
-      reader.readAsDataURL(file)
+    } catch (err) {
+      if (toastId) notify.dismiss?.(toastId)
+      notify.error('Failed to upload background image')
     }
   }
 
   // Mood card image upload
-  const handleMoodCardImageUpload = (index, e) => {
+  const handleMoodCardImageUpload = async (index, e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
+    if (!file) return
+    const toastId = notify.loading?.('Uploading mood photo...')
+    try {
+      const uploadedPath = await homeCmsService.uploadImage(file, `mood-${index}`)
+      if (toastId) notify.dismiss?.(toastId)
+      if (uploadedPath) {
         const updated = [...styleDirectionForm.moods]
-        updated[index] = { ...updated[index], image: reader.result }
+        updated[index] = { ...updated[index], image: uploadedPath }
         setStyleDirectionForm((prev) => ({ ...prev, moods: updated }))
+        notify.success('Mood card image uploaded')
       }
-      reader.readAsDataURL(file)
+    } catch (err) {
+      if (toastId) notify.dismiss?.(toastId)
+      notify.error('Failed to upload card image')
     }
   }
 
@@ -189,7 +280,7 @@ export default function AdminHomeCMS() {
   }
 
   // Save Style Direction
-  const handleSaveStyleDirection = (e) => {
+  const handleSaveStyleDirection = async (e) => {
     e.preventDefault()
     const errs = {}
     if (!styleDirectionForm.title.trim()) errs.title = 'Title cannot be blank'
@@ -207,8 +298,13 @@ export default function AdminHomeCMS() {
     }
 
     setStyleErrors({})
-    updateStyleDirection(styleDirectionForm)
-    showSaved('Fashion For Every Mood updated successfully!')
+    try {
+      await updateStyleDirection(styleDirectionForm)
+      showSaved('Fashion For Every Mood updated successfully!')
+      notify.success('Fashion For Every Mood saved to database!')
+    } catch (err) {
+      notify.error('Failed to save to database')
+    }
   }
 
   // -------------------------------------------------------------
@@ -221,9 +317,21 @@ export default function AdminHomeCMS() {
     selectedCategories: JSON.parse(JSON.stringify(cmsData.shopByCategory.selectedCategories || [])),
   }))
 
+  // Keep categoryForm in sync when backend cmsData finishes loading
+  useEffect(() => {
+    if (cmsData?.shopByCategory) {
+      setCategoryForm({
+        title: cmsData.shopByCategory.title || 'Shop by',
+        highlightTitle: cmsData.shopByCategory.highlightTitle || 'Category',
+        description: cmsData.shopByCategory.description || '',
+        selectedCategories: JSON.parse(JSON.stringify(cmsData.shopByCategory.selectedCategories || [])),
+      })
+    }
+  }, [cmsData.shopByCategory])
+
   const [categoryPickerSlotIndex, setCategoryPickerSlotIndex] = useState(null)
 
-  // Dynamic category options combining all categories created in admin + present in catalog
+  // Dynamic category options combining products from DB + admin presets
   const categoryDropdownOptions = useMemo(() => {
     let savedCategories = []
     try {
@@ -233,7 +341,7 @@ export default function AdminHomeCMS() {
       console.error(e)
     }
 
-    const fromProducts = allProductsList.map((p) => p.category)
+    const fromDbProducts = dbProducts.map((p) => p.category).filter(Boolean)
     const baseDefaults = [
       'Banarasi',
       'Kanjivaram',
@@ -244,45 +352,63 @@ export default function AdminHomeCMS() {
       'Chiffon',
       'Bandhani',
       'Paithani',
+      'Georgette',
     ]
 
     // Unique combination of all categories
-    const combined = Array.from(
-      new Set([...savedCategories, ...fromProducts, ...baseDefaults].filter(Boolean))
-    )
-    return combined
-  }, [])
+    return Array.from(new Set([...fromDbProducts, ...savedCategories, ...baseDefaults]))
+  }, [dbProducts])
 
-  // When admin selects a category from dropdown, update categoryName, auto-set href, and auto-pick the first product's photo
+  // When admin selects a category from dropdown, update categoryName, auto-set itemCount, title, href, and auto-open product picker
   const handleSelectCategoryDropdown = (index, chosenCategory) => {
-    const matchingProducts = allProductsList.filter(
-      (p) => p.category.toLowerCase() === chosenCategory.toLowerCase()
+    const matchingProducts = dbProducts.filter(
+      (p) => (p.category || '').toLowerCase() === chosenCategory.toLowerCase()
     )
     const featuredProduct = matchingProducts[0]
+    const count = matchingProducts.length
 
     const updated = [...categoryForm.selectedCategories]
     updated[index] = {
       ...updated[index],
       categoryName: chosenCategory,
       title: `${chosenCategory} Sarees`,
-      itemCount: `${matchingProducts.length > 0 ? matchingProducts.length * 15 + 40 : 60} Items`,
-      image: featuredProduct ? featuredProduct.image : updated[index].image,
-      featuredProductId: featuredProduct ? featuredProduct.id : null,
+      itemCount: `${count > 0 ? count : 12} Items`,
+      image: featuredProduct ? (featuredProduct.image || featuredProduct.variants?.[0]?.image) : (updated[index].image || ''),
+      featuredProductId: featuredProduct ? (featuredProduct._id || featuredProduct.id) : null,
       href: `/collections?category=${encodeURIComponent(chosenCategory)}`,
     }
-    setCategoryForm((prev) => ({ ...prev, selectedCategories: updated }))
+    const newForm = { ...categoryForm, selectedCategories: updated }
+    setCategoryForm(newForm)
+    updateShopByCategory(newForm)
+
+    // Automatically open the product picker modal so admin can pick the specific saree from this category
+    setCategoryPickerSlotIndex(index)
   }
 
   // When admin chooses a specific product inside the category product picker modal
   const handlePickProductForCategorySlot = (slotIndex, product) => {
+    const pId = product._id || product.id
+    const pImg = product.image || product.variants?.[0]?.image || ''
+    const prodCategory = product.category || categoryForm.selectedCategories[slotIndex]?.categoryName || 'Banarasi'
+    const matchingProducts = dbProducts.filter(
+      (p) => (p.category || '').toLowerCase() === prodCategory.toLowerCase()
+    )
+    const count = matchingProducts.length
+
     const updated = [...categoryForm.selectedCategories]
     updated[slotIndex] = {
       ...updated[slotIndex],
-      image: product.image,
-      featuredProductId: product.id,
+      categoryName: prodCategory,
+      title: `${prodCategory} Sarees`,
+      itemCount: `${count > 0 ? count : 12} Items`,
+      image: pImg,
+      featuredProductId: pId,
       itemTitle: product.title,
+      href: `/collections?category=${encodeURIComponent(prodCategory)}`,
     }
-    setCategoryForm((prev) => ({ ...prev, selectedCategories: updated }))
+    const newForm = { ...categoryForm, selectedCategories: updated }
+    setCategoryForm(newForm)
+    updateShopByCategory(newForm)
     setCategoryPickerSlotIndex(null)
   }
 
@@ -298,39 +424,44 @@ export default function AdminHomeCMS() {
       return
     }
     const defaultCat = 'Banarasi'
-    const matchingProducts = allProductsList.filter(
-      (p) => p.category.toLowerCase() === defaultCat.toLowerCase()
+    const matchingProducts = dbProducts.filter(
+      (p) => (p.category || '').toLowerCase() === defaultCat.toLowerCase()
     )
     const featuredProduct = matchingProducts[0]
+    const count = matchingProducts.length
 
     const defaultNew = {
       id: Date.now(),
       title: `${defaultCat} Sarees`,
       categoryName: defaultCat,
-      itemCount: '80 Items',
-      image: featuredProduct ? featuredProduct.image : allProductsList[0]?.image || '',
-      featuredProductId: featuredProduct ? featuredProduct.id : null,
+      itemCount: `${count > 0 ? count : 80} Items`,
+      image: featuredProduct ? (featuredProduct.image || featuredProduct.variants?.[0]?.image) : '',
+      featuredProductId: featuredProduct ? (featuredProduct._id || featuredProduct.id) : null,
       href: `/collections?category=${encodeURIComponent(defaultCat)}`,
     }
-    setCategoryForm((prev) => ({
-      ...prev,
-      selectedCategories: [...prev.selectedCategories, defaultNew],
-    }))
+    // Prepend newly added slot at the beginning (Slot #1)
+    const newForm = {
+      ...categoryForm,
+      selectedCategories: [defaultNew, ...categoryForm.selectedCategories],
+    }
+    setCategoryForm(newForm)
+    updateShopByCategory(newForm)
+    // Automatically open the product picker for the newly added first slot
+    setCategoryPickerSlotIndex(0)
   }
 
   const handleRemoveCategorySlot = (index) => {
-    if (categoryForm.selectedCategories.length <= 1) {
-      alert('You must have at least one category card.')
-      return
+    const nextCategories = categoryForm.selectedCategories.filter((_, idx) => idx !== index)
+    const newForm = {
+      ...categoryForm,
+      selectedCategories: nextCategories,
     }
-    setCategoryForm((prev) => ({
-      ...prev,
-      selectedCategories: prev.selectedCategories.filter((_, idx) => idx !== index),
-    }))
+    setCategoryForm(newForm)
+    updateShopByCategory(newForm)
   }
 
   const handleSaveShopByCategory = (e) => {
-    e.preventDefault()
+    if (e && e.preventDefault) e.preventDefault()
     updateShopByCategory(categoryForm)
     showSaved('Shop By Category updated successfully!')
   }
@@ -339,52 +470,78 @@ export default function AdminHomeCMS() {
   // TAB 3: New Arrivals (Max 4 Products) State
   // -------------------------------------------------------------
   const [arrivalsForm, setArrivalsForm] = useState(() => ({
-    title: cmsData.newArrivals.title,
-    highlightTitle: cmsData.newArrivals.highlightTitle,
-    description: cmsData.newArrivals.description,
-    productIds: [...(cmsData.newArrivals.productIds || [1, 2, 3, 4])],
+    title: cmsData.newArrivals?.title || 'New',
+    highlightTitle: cmsData.newArrivals?.highlightTitle || 'Arrivals',
+    description: cmsData.newArrivals?.description || '',
+    productIds: [...(cmsData.newArrivals?.productIds || [])],
   }))
+
+  // Keep arrivalsForm in sync when backend cmsData finishes loading
+  useEffect(() => {
+    if (cmsData?.newArrivals) {
+      setArrivalsForm({
+        title: cmsData.newArrivals.title || 'New',
+        highlightTitle: cmsData.newArrivals.highlightTitle || 'Arrivals',
+        description: cmsData.newArrivals.description || '',
+        productIds: [...(cmsData.newArrivals.productIds || [])],
+      })
+    }
+  }, [cmsData.newArrivals])
 
   const [isArrivalProductPickerOpen, setIsArrivalProductPickerOpen] = useState(false)
   const [productSearchTerm, setProductSearchTerm] = useState('')
 
-  const handleToggleArrivalProduct = (productId) => {
-    const exists = arrivalsForm.productIds.includes(productId)
+  const handleToggleArrivalProduct = async (productId) => {
+    const sId = String(productId)
+    const exists = arrivalsForm.productIds.some((id) => String(id) === sId)
+
     if (exists) {
       if (arrivalsForm.productIds.length <= 1) {
-        alert('You must keep at least 1 product selected for New Arrivals.')
+        notify.error('You must keep at least 1 product selected for New Arrivals.')
         return
       }
-      const nextProductIds = arrivalsForm.productIds.filter((id) => id !== productId)
+      const nextProductIds = arrivalsForm.productIds.filter((id) => String(id) !== sId)
       const updated = { ...arrivalsForm, productIds: nextProductIds }
       setArrivalsForm(updated)
-      updateNewArrivals(updated)
-      showSaved('New Arrivals updated automatically!')
+      try {
+        await updateNewArrivals(updated)
+        notify.success('New Arrivals updated successfully!')
+      } catch (err) {
+        notify.error('Failed to save to database')
+      }
       return
     }
 
     if (arrivalsForm.productIds.length >= 4) {
-      alert('Maximum 4 products allowed in the New Arrivals section.')
+      notify.error('Maximum 4 products allowed in the New Arrivals section.')
       return
     }
 
-    const nextProductIds = [...arrivalsForm.productIds, productId]
+    const nextProductIds = [...arrivalsForm.productIds, sId]
     const updated = { ...arrivalsForm, productIds: nextProductIds }
     setArrivalsForm(updated)
-    updateNewArrivals(updated)
-    showSaved('New Arrivals updated automatically!')
+    try {
+      await updateNewArrivals(updated)
+      notify.success('Product added to New Arrivals!')
+    } catch (err) {
+      notify.error('Failed to save to database')
+    }
   }
 
   const handleArrivalsFieldChange = (field, value) => {
     const updated = { ...arrivalsForm, [field]: value }
     setArrivalsForm(updated)
-    updateNewArrivals(updated)
   }
 
-  const handleSaveNewArrivals = (e) => {
+  const handleSaveNewArrivals = async (e) => {
     if (e && e.preventDefault) e.preventDefault()
-    updateNewArrivals(arrivalsForm)
-    showSaved('New Arrivals section updated successfully!')
+    try {
+      await updateNewArrivals(arrivalsForm)
+      notify.success('New Arrivals section saved to database!')
+      showSaved('New Arrivals section updated successfully!')
+    } catch (err) {
+      notify.error('Failed to save New Arrivals to database')
+    }
   }
 
   // -------------------------------------------------------------
@@ -409,18 +566,20 @@ export default function AdminHomeCMS() {
     const targetShowcase = cmsData.categoryShowcases.find((cs) => cs.id === showcaseId)
     if (!targetShowcase) return
 
-    const exists = targetShowcase.productIds.includes(productId)
+    const sProductId = String(productId)
+    const exists = (targetShowcase.productIds || []).some((id) => String(id) === sProductId)
+
     if (exists) {
       updateCategoryShowcase(showcaseId, {
-        productIds: targetShowcase.productIds.filter((id) => id !== productId),
+        productIds: targetShowcase.productIds.filter((id) => String(id) !== sProductId),
       })
     } else {
-      if (targetShowcase.productIds.length >= 4) {
-        alert('Maximum 4 products can be chosen for this category showcase section.')
+      if ((targetShowcase.productIds || []).length >= 4) {
+        notify.error('Maximum 4 products can be chosen for this category showcase section.')
         return
       }
       updateCategoryShowcase(showcaseId, {
-        productIds: [...targetShowcase.productIds, productId],
+        productIds: [...(targetShowcase.productIds || []), sProductId],
       })
     }
   }
@@ -430,8 +589,11 @@ export default function AdminHomeCMS() {
     setTimeout(() => setSaveSuccessMsg(''), 3000)
   }
 
-  // Helper to fetch full product objects from ID
-  const getProductById = (id) => allProductsList.find((p) => p.id === id)
+  // Helper to fetch full product objects from ID (checking MongoDB products first, then fallback)
+  const getProductById = (id) => {
+    const sId = String(id)
+    return dbProducts.find((p) => String(p._id || p.id) === sId)
+  }
 
   return (
     <div className="space-y-6 max-w-6xl pb-20">
@@ -526,11 +688,9 @@ export default function AdminHomeCMS() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-[#EDE4D8]">
               <div>
                 <h2 className="text-base font-bold text-[#1F1713]">
-                  Hero Banner Slider ({(cmsData.heroBanners || []).length} active/configured)
+                  Hero Banner Slider 
                 </h2>
-                <p className="text-[11px] text-stone-500 mt-0.5">
-                  Manage the full-width rotating hero slider displayed at the very top of your homepage.
-                </p>
+               
               </div>
 
               <button
@@ -551,49 +711,72 @@ export default function AdminHomeCMS() {
                   className="bg-[#FAF7F2] border border-[#EDE4D8] rounded-none overflow-hidden flex flex-col justify-between"
                 >
                   <div>
-                    {/* Banner Image Preview */}
-                    <div className="relative aspect-[16/9] w-full bg-stone-100 overflow-hidden border-b border-[#EDE4D8]">
-                      {banner.image ? (
-                        <img
-                          src={banner.image}
-                          alt={banner.buttonText || 'Hero Banner'}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-stone-400">
-                          <ImageIcon className="w-8 h-8" />
+                    {/* Banner Image Previews: Laptop Screen + Mobile Screen */}
+                    <div className="p-3 bg-stone-100 border-b border-[#EDE4D8] grid grid-cols-12 gap-2">
+                      {/* Laptop Screen Thumbnail */}
+                      <div className="col-span-8 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-stone-500 font-bold uppercase">
+                          <span className="flex items-center gap-1">
+                            <Laptop className="w-3 h-3 text-[#6D021B]" /> Laptop
+                          </span>
+                          <span>16:9</span>
                         </div>
-                      )}
+                        <div className="relative aspect-[16/9] w-full bg-stone-200 overflow-hidden border border-stone-300">
+                          {banner.image ? (
+                            <img
+                              src={getCmsImageUrl(banner.image)}
+                              alt="Laptop Banner"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-stone-400">
+                              <ImageIcon className="w-5 h-5" />
+                            </div>
+                          )}
+                          <span className="absolute bottom-1 left-1 bg-black/60 backdrop-blur-xs text-white text-[9px] font-bold px-1.5 py-0.2">
+                            Slide #{index + 1}
+                          </span>
+                        </div>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleToggleBannerActive(banner.id)}
-                        className={`absolute top-2 right-2 px-2.5 py-0.5 text-[10px] font-bold shadow-xs cursor-pointer rounded-none ${
-                          banner.active !== false
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-black/60 text-white backdrop-blur-xs'
-                        }`}
-                      >
-                        {banner.active !== false ? 'Active' : 'Disabled'}
-                      </button>
-
-                      <span className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded-none">
-                        Slide #{index + 1}
-                      </span>
+                      {/* Mobile Screen Thumbnail */}
+                      <div className="col-span-4 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-stone-500 font-bold uppercase">
+                          <span className="flex items-center gap-1">
+                            <Smartphone className="w-3 h-3 text-[#6D021B]" /> Mobile
+                          </span>
+                          <span>Portrait</span>
+                        </div>
+                        <div className="relative aspect-[9/16] w-full bg-stone-200 overflow-hidden border border-stone-300">
+                          {banner.mobileImage ? (
+                            <img
+                              src={getCmsImageUrl(banner.mobileImage)}
+                              alt="Mobile Banner"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : banner.image ? (
+                            <div className="relative w-full h-full">
+                              <img
+                                src={getCmsImageUrl(banner.image)}
+                                alt="Mobile Banner Fallback"
+                                className="w-full h-full object-cover opacity-60"
+                              />
+                              <span className="absolute inset-0 flex items-center justify-center text-[9px] text-stone-900 bg-white/70 font-bold text-center px-1">
+                                Auto-fit
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-stone-400">
+                              <Smartphone className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
                     {/* Banner Info */}
                     <div className="p-4 space-y-2">
-                      {banner.title && (
-                        <div>
-                          <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
-                            Title / Caption
-                          </label>
-                          <p className="text-xs font-bold text-stone-900 truncate mt-0.5">
-                            {banner.title}
-                          </p>
-                        </div>
-                      )}
+                    
 
                       <div>
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
@@ -670,7 +853,7 @@ export default function AdminHomeCMS() {
                 <div className="relative aspect-[16/9] border border-stone-200 bg-stone-900 overflow-hidden flex items-center justify-center group">
                   {styleDirectionForm.backgroundImage ? (
                     <img
-                      src={styleDirectionForm.backgroundImage}
+                      src={getCmsImageUrl(styleDirectionForm.backgroundImage)}
                       alt="Banner Preview"
                       className="w-full h-full object-cover"
                     />
@@ -693,6 +876,18 @@ export default function AdminHomeCMS() {
                     </label>
                   </div>
                 </div>
+
+                {/* Direct Visible Upload Button */}
+                <label className="flex items-center justify-center gap-2 w-full px-3 py-2 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-[#FAF7F2] hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors text-xs font-bold shadow-2xs">
+                  <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
+                  <span>{styleDirectionForm.backgroundImage ? 'Upload / Replace Background Photo' : 'Upload Background Photo'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleBgImageUpload}
+                    className="hidden"
+                  />
+                </label>
 
                
               </div>
@@ -801,7 +996,7 @@ export default function AdminHomeCMS() {
                     {/* Mood Card Image Preview & Upload */}
                     <div className="relative aspect-[3/4] bg-stone-900 overflow-hidden border border-stone-200 group">
                       <img
-                        src={mood.image}
+                        src={getCmsImageUrl(mood.image)}
                         alt={mood.title}
                         className="w-full h-full object-cover"
                       />
@@ -884,7 +1079,7 @@ export default function AdminHomeCMS() {
             {/* Rendered Live Replica */}
             <div className="relative w-full min-h-[380px] sm:min-h-[460px] flex items-center overflow-hidden border border-stone-200">
               <img
-                src={styleDirectionForm.backgroundImage}
+                src={getCmsImageUrl(styleDirectionForm.backgroundImage)}
                 alt="Banner Preview"
                 className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none"
               />
@@ -912,7 +1107,7 @@ export default function AdminHomeCMS() {
                       {styleDirectionForm.moods.map((mood, idx) => (
                         <div key={idx} className="bg-[#181014]/90 border border-[#DEA53B]/40 text-left overflow-hidden">
                           <div className="aspect-[3/4] bg-stone-900 overflow-hidden">
-                            <img src={mood.image} alt={mood.title} className="w-full h-full object-cover" />
+                            <img src={getCmsImageUrl(mood.image)} alt={mood.title} className="w-full h-full object-cover" />
                           </div>
                           <div className="p-2 sm:p-3 bg-black/80">
                             <h4 className="text-white font-bold text-xs uppercase tracking-wider">{mood.title}</h4>
@@ -994,99 +1189,168 @@ export default function AdminHomeCMS() {
             </div>
 
             {/* 6 Category Slots Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categoryForm.selectedCategories.map((cat, idx) => {
+            {categoryForm.selectedCategories.length === 0 ? (
+              <div className="py-12 px-4 border-2 border-dashed border-[#EDE4D8] bg-[#FAF7F2] text-center space-y-3">
+                <p className="text-sm font-semibold text-stone-600">
+                  No category cards currently configured.
+                </p>
+                <p className="text-xs text-stone-400">
+                  You can leave this section empty, or click "+ Add Slot" above anytime to feature categories on the homepage.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleAddCategorySlot}
+                  className="px-4 py-2 bg-[#6D021B] hover:bg-[#580115] text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add First Category Slot</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                {categoryForm.selectedCategories.map((cat, idx) => {
                 const currentCategory = cat.categoryName || 'Banarasi'
-                const categoryProducts = allProductsList.filter(
-                  (p) => p.category.toLowerCase() === currentCategory.toLowerCase()
+                const categoryProducts = dbProducts.filter(
+                  (p) => (p.category || '').toLowerCase() === currentCategory.toLowerCase()
                 )
 
                 return (
-                  <div key={cat.id || idx} className="bg-[#FAF7F2] p-3.5 border border-[#EDE4D8] rounded-none space-y-3 relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-[#6D021B] text-xs">Slot #{idx + 1}</span>
+                  <div key={cat.id || idx} className="bg-white p-4 border-2 border-[#EDE4D8] hover:border-[#6D021B]/40 shadow-xs space-y-3.5 relative transition-all">
+                    {/* Header: Slot Badge & Remove */}
+                    <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+                      <div className="flex items-center gap-2">
+                        <span className="font-extrabold text-white bg-[#6D021B] px-2 py-0.5 text-[11px] tracking-wide">
+                          SLOT #{idx + 1}
+                        </span>
+                        <span className="text-[11px] font-semibold text-stone-500">
+                          {cat.title || `${currentCategory} Sarees`}
+                        </span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleRemoveCategorySlot(idx)}
-                        className="text-stone-400 hover:text-red-700 cursor-pointer p-1"
+                        className="text-stone-400 hover:text-red-700 cursor-pointer p-1 transition-colors"
                         title="Remove Slot"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
 
-                    {/* Category Selection Dropdown */}
+               
+
+                    {/* STEP 2: Choose Representative Product Image */}
                     <div>
-                      <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                        Select Category:
-                      </label>
-                      <select
-                        value={currentCategory}
-                        onChange={(e) => handleSelectCategoryDropdown(idx, e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-white border border-[#EDE4D8] rounded-none text-xs font-bold text-[#6D021B] focus:outline-none cursor-pointer"
-                      >
-                        {categoryDropdownOptions.map((cName) => (
-                          <option key={cName} value={cName}>
-                            {cName} Sarees
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Saree Card Photo Preview with "Select Particular Product" Button */}
-                    <div className="relative aspect-[4/5] bg-stone-900 overflow-hidden border border-stone-200">
-                      <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
-
-                      {/* Floating overlay to pick particular product from this category */}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-3 text-center">
-                        <span className="text-white text-[11px] font-medium leading-tight">
-                          {cat.itemTitle ? `Featured: ${cat.itemTitle}` : 'Click to choose which saree to showcase'}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">
+                          2. Representative Saree Photo
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => setCategoryPickerSlotIndex(idx)}
-                          className="px-3 py-1.5 bg-[#DEA53B] hover:bg-white text-stone-900 font-bold text-xs rounded-none flex items-center gap-1 shadow cursor-pointer transition-colors"
-                        >
-                          <Search className="w-3 h-3" />
-                          <span>Select Product ({categoryProducts.length} available)</span>
-                        </button>
+                        <span className="text-[10px] text-stone-500 font-medium">
+                          {cat.itemTitle ? 'Product Selected' : 'Auto-defaulted'}
+                        </span>
                       </div>
 
-                      {/* Category Badge on thumbnail */}
-                      <span className="absolute top-2 left-2 bg-[#6D021B] text-white text-[9px] font-bold px-1.5 py-0.5 pointer-events-none">
-                        {currentCategory}
-                      </span>
-                    </div>
+                      {/* Photo preview container */}
+                      <div className="relative aspect-[4/5] bg-stone-900 overflow-hidden border border-stone-200 group">
+                        <img
+                          src={getCmsImageUrl(cat.image)}
+                          alt={cat.title}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
 
-                    {/* Quick Button to Select Saree if not hovering */}
-                  
+                        {/* Hover Overlay */}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 p-3 text-center">
+                          <span className="text-white text-xs font-medium line-clamp-2">
+                            {cat.itemTitle || cat.title}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setCategoryPickerSlotIndex(idx)}
+                            className="px-3.5 py-1.5 bg-[#DEA53B] hover:bg-white text-stone-900 font-bold text-xs rounded-none flex items-center gap-1.5 shadow cursor-pointer transition-colors"
+                          >
+                            <Search className="w-3.5 h-3.5" />
+                            <span>Browse & Pick Saree</span>
+                          </button>
+                        </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-stone-600 mb-0.5">Display Title</label>
-                      <input
-                        type="text"
-                        value={cat.title}
-                        onChange={(e) => handleUpdateCategoryCard(idx, 'title', e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-white border border-[#EDE4D8] rounded-none text-xs font-semibold focus:outline-none"
-                      />
-                    </div>
+                        {/* Top Category Badge */}
+                        <span className="absolute top-2 left-2 bg-[#6D021B] text-white text-[10px] font-bold px-2 py-0.5 tracking-wide shadow-sm pointer-events-none">
+                          {currentCategory}
+                        </span>
 
-                    <div>
-                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Item Count Subtitle</label>
-                      <input
-                        type="text"
-                        value={cat.itemCount}
-                        onChange={(e) => handleUpdateCategoryCard(idx, 'itemCount', e.target.value)}
-                        className="w-full px-2 py-1 bg-white border border-[#EDE4D8] rounded-none text-xs focus:outline-none"
-                      />
-                    </div>
+                        {/* Bottom Info Ribbon */}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent p-2 text-left pointer-events-none">
+                          <p className="text-white font-serif text-xs font-bold truncate">{cat.title}</p>
+                          <p className="text-[#DEA53B] text-[10px] font-semibold">{cat.itemCount}</p>
+                        </div>
+                      </div>
 
                     
-                
+                    </div>
+
+                    {/* In-Card Live Product Thumbnails Selector (Quick 1-Click Pick) */}
+                    {categoryProducts.length > 0 && (
+                      <div className="pt-2 border-t border-stone-100">
+                        <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block mb-1.5">
+                          Quick Pick from {currentCategory} ({categoryProducts.length}):
+                        </span>
+                        <div className="grid grid-cols-4 gap-1.5 max-h-24 overflow-y-auto p-1 bg-[#FAF7F2] border border-stone-200">
+                          {categoryProducts.map((prod) => {
+                            const pImg = prod.image || prod.variants?.[0]?.image || ''
+                            const isPicked =
+                              cat.featuredProductId === (prod._id || prod.id) || cat.image === pImg
+                            return (
+                              <button
+                                key={prod._id || prod.id}
+                                type="button"
+                                onClick={() => handlePickProductForCategorySlot(idx, prod)}
+                                title={prod.title}
+                                className={`relative aspect-[3/4] overflow-hidden border cursor-pointer transition-all ${
+                                  isPicked
+                                    ? 'border-[#6D021B] ring-2 ring-[#6D021B] scale-95 shadow-sm'
+                                    : 'border-stone-300 hover:border-stone-500 opacity-75 hover:opacity-100'
+                                }`}
+                              >
+                                <img
+                                  src={getCmsImageUrl(pImg)}
+                                  alt={prod.title}
+                                  className="w-full h-full object-cover"
+                                />
+                                {isPicked && (
+                                  <div className="absolute inset-0 bg-[#6D021B]/40 flex items-center justify-center">
+                                    <Check className="w-3.5 h-3.5 text-white stroke-[3]" />
+                                  </div>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Auto-filled Category Name & Real Count (Read-only badges, no manual edit) */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100">
+                      <div className="bg-[#FAF7F2] p-2 border border-[#EDE4D8]">
+                        <span className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                          Category Title
+                        </span>
+                        <span className="block text-xs font-bold text-[#6D021B] mt-0.5 truncate" title={cat.title}>
+                          {cat.title || `${currentCategory} Sarees`}
+                        </span>
+                      </div>
+                      <div className="bg-[#FAF7F2] p-2 border border-[#EDE4D8]">
+                        <span className="block text-[9px] font-bold text-stone-500 uppercase tracking-wider">
+                          Item Count
+                        </span>
+                        <span className="block text-xs font-bold text-emerald-800 mt-0.5">
+                          {cat.itemCount || `${categoryProducts.length} Items`}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )
               })}
             </div>
+            )}
           </form>
 
           {/* Live Preview for Shop By Category */}
@@ -1099,25 +1363,89 @@ export default function AdminHomeCMS() {
               <span className="text-[11px] text-stone-500 font-semibold">{categoryForm.selectedCategories.length} cards rendered</span>
             </div>
 
-            <div className="bg-[#F2E9DE] p-6 text-left">
-              <h2 className="font-serif text-2xl text-stone-900 mb-1">
-                {categoryForm.title} <span className="italic text-[#6D021B]">{categoryForm.highlightTitle}</span>
-              </h2>
-              <p className="text-xs text-stone-600 mb-6 max-w-md">{categoryForm.description}</p>
+            <div className="bg-[#F2E9DE] bg-gradient-to-b from-[#F5EEE4] via-[#F2E9DE] to-[#EAE0D3] p-6 sm:p-8 text-left border border-[#DFD1BF] relative overflow-hidden">
+              {/* Subtle Warm Grid Pattern */}
+              <div
+                className="absolute inset-0 opacity-[0.035] pointer-events-none"
+                style={{
+                  backgroundImage: 'radial-gradient(#6D021B 1px, transparent 1px)',
+                  backgroundSize: '24px 24px',
+                }}
+              />
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-3">
-                {categoryForm.selectedCategories.map((cat, idx) => (
-                  <div key={idx} className="bg-white border border-stone-200 overflow-hidden text-left shadow-xs">
-                    <div className="aspect-[3/4] bg-stone-100 overflow-hidden">
-                      <img src={cat.image} alt={cat.title} className="w-full h-full object-cover" />
-                    </div>
-                    <div className="p-2.5">
-                      <h4 className="font-bold text-xs text-stone-900 truncate">{cat.title}</h4>
-                      <p className="text-[10px] text-stone-500">{cat.itemCount}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="relative z-10 mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                <div>
+                  <h2 className="font-serif text-2xl sm:text-3xl text-[#1F1713] leading-tight">
+                    {categoryForm.title || 'Shop by'}{' '}
+                    <span className="italic text-[#6D021B] font-serif">
+                      {categoryForm.highlightTitle || 'Category'}
+                    </span>
+                  </h2>
+                  <p className="text-xs text-[#6F5F53] mt-1 max-w-lg">
+                    {categoryForm.description || 'Discover curated collections tailored to celebrate timeless grace & Indian heritage'}
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-[#6D021B] uppercase tracking-wider">
+                  <span>See all categories</span>
+                  <span>→</span>
+                </div>
               </div>
+
+              {categoryForm.selectedCategories.length === 0 ? (
+                <div className="py-12 text-center text-stone-400 text-xs font-medium">
+                  No category cards to preview.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 relative z-10">
+                  {categoryForm.selectedCategories.map((cat, idx) => (
+                    <div
+                      key={cat.id || idx}
+                      className="group relative flex flex-col w-full overflow-hidden bg-white border border-[#DFD1BF] shadow-sm transition-all duration-300"
+                    >
+                      {/* Edge-to-Edge Image Frame */}
+                      <div className="relative aspect-[3/4] lg:aspect-[4/5] w-full overflow-hidden bg-[#18212C]">
+                        <img
+                          src={getCmsImageUrl(cat.image)}
+                          alt={cat.title}
+                          className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
+                        />
+
+                        {/* Subtle bottom vignette for text readability */}
+                        <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/45 to-transparent pointer-events-none z-10" />
+
+                        {/* Bottom Text Drawer with Golden Arrow Button */}
+                        <div className="absolute inset-x-0 bottom-0 p-3 sm:p-4 z-20 flex items-center justify-between gap-2">
+                          <div className="min-w-0 flex-1 text-left">
+                            <h3 className="font-serif text-xs sm:text-sm md:text-base font-semibold text-[#FFF8ED] leading-tight truncate">
+                              {cat.title || `${cat.categoryName || 'Banarasi'} Sarees`}
+                            </h3>
+                            <p className="text-[10px] sm:text-xs text-[#E1D1C3] mt-0.5 font-normal tracking-wide truncate">
+                              {cat.itemCount || '0 Items'}
+                            </p>
+                          </div>
+
+                          {/* Golden Arrow Button identical to user design */}
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 bg-[#DEA53B] text-[#1F1713] flex items-center justify-center shrink-0 border border-white/20 shadow-md">
+                            <svg
+                              className="w-3 h-3 sm:w-3.5 sm:h-3.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.5"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                              />
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1146,6 +1474,13 @@ export default function AdminHomeCMS() {
                   className="px-3.5 py-2 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-none cursor-pointer flex items-center gap-1.5 transition-colors"
                 >
                   <span>Select Products</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNewArrivals}
+                  className="px-4 py-2 bg-[#6D021B] hover:bg-[#580115] text-white font-bold text-xs rounded-none cursor-pointer flex items-center gap-1.5 transition-colors shadow-2xs"
+                >
+                  <span>Save Changes</span>
                 </button>
               </div>
             </div>
@@ -1195,7 +1530,7 @@ export default function AdminHomeCMS() {
                   return (
                     <div key={id} className="bg-[#FAF7F2] p-3 border border-[#EDE4D8] rounded-none flex flex-col justify-between">
                       <div className="relative aspect-[3/4] bg-stone-100 overflow-hidden mb-2">
-                        <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                        <img src={getCmsImageUrl(p.image || p.variants?.[0]?.image)} alt={p.title} className="w-full h-full object-cover" />
                         <span className="absolute top-2 left-2 bg-[#6D021B] text-white text-[10px] font-bold px-1.5 py-0.5">
                           NEW
                         </span>
@@ -1240,10 +1575,14 @@ export default function AdminHomeCMS() {
                 {arrivalsForm.productIds.map((id) => {
                   const p = getProductById(id)
                   if (!p) return null
+                  const pImg = p.image || p.variants?.[0]?.images?.[0] || p.variants?.[0]?.image || ''
                   return (
                     <div key={id} className="bg-white border border-stone-200 overflow-hidden text-left shadow-xs">
                       <div className="aspect-[3/4] bg-stone-100 overflow-hidden relative">
-                        <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                        <img
+                          src={getCmsImageUrl(p.image || p.variants?.[0]?.image)} alt={p.title}
+                          className="w-full h-full object-cover"
+                        />
                         <span className="absolute top-2 left-2 bg-[#6D021B] text-white text-[10px] font-bold px-1.5 py-0.5">NEW</span>
                       </div>
                       <div className="p-3">
@@ -1379,7 +1718,7 @@ export default function AdminHomeCMS() {
                         return (
                           <div key={id} className="bg-white border border-stone-200 p-2 overflow-hidden shadow-2xs relative group">
                             <div className="aspect-[3/4] bg-stone-100 overflow-hidden mb-1.5">
-                              <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                              <img src={getCmsImageUrl(p.image || p.variants?.[0]?.image)} alt={p.title} className="w-full h-full object-cover" />
                             </div>
                             <h5 className="font-bold text-xs text-stone-900 truncate">{p.title}</h5>
                             <span className="text-xs font-bold text-[#6D021B]">₹{p.price}</span>
@@ -1413,44 +1752,75 @@ export default function AdminHomeCMS() {
             if (!currentSlot) return null
 
             const slotCategory = currentSlot.categoryName || 'Banarasi'
-            const matchingProducts = allProductsList.filter(
-              (p) => p.category.toLowerCase() === slotCategory.toLowerCase()
+            const matchingProducts = dbProducts.filter(
+              (p) => (p.category || '').toLowerCase() === slotCategory.toLowerCase()
             )
 
             return (
-              <div className="bg-white w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl border border-stone-300">
-                <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-[#FAF7F2]">
-                  <div>
-                    <h3 className="font-bold text-sm text-stone-900">
-                      Choose Featured Saree for Slot #{categoryPickerSlotIndex + 1} ({slotCategory} Category)
-                    </h3>
-                    <p className="text-[11px] text-stone-500">
-                      Showing sarees from "{slotCategory}". Click any saree to set it as the cover photo for this category.
-                    </p>
+              <div className="bg-white w-full max-w-4xl max-h-[88vh] flex flex-col shadow-2xl border border-stone-300">
+                <div className="p-4 border-b border-stone-200 bg-[#FAF7F2] space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-bold text-sm text-stone-900">
+                        Choose Featured Saree for Slot #{categoryPickerSlotIndex + 1}
+                      </h3>
+                      <p className="text-[11px] text-stone-500">
+                        Select a category from the dropdown to view its sarees, then click any saree to feature it on the homepage.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryPickerSlotIndex(null)}
+                      className="px-3 py-1 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+                    >
+                      Close
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setCategoryPickerSlotIndex(null)}
-                    className="px-3 py-1 bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
-                  >
-                    Close
-                  </button>
+
+                  {/* Category Dropdown inside Modal */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-xs font-bold text-[#6D021B] whitespace-nowrap">Filter by Category:</span>
+                    <select
+                      value={slotCategory}
+                      onChange={(e) => {
+                        const newCat = e.target.value
+                        handleSelectCategoryDropdown(categoryPickerSlotIndex, newCat)
+                      }}
+                      className="flex-1 max-w-xs px-3 py-1.5 bg-white border border-[#EDE4D8] text-xs font-bold text-stone-900 focus:outline-none focus:border-[#6D021B] cursor-pointer"
+                    >
+                      {categoryDropdownOptions.map((cName) => {
+                        const count = dbProducts.filter(
+                          (p) => (p.category || '').toLowerCase() === cName.toLowerCase()
+                        ).length
+                        return (
+                          <option key={cName} value={cName}>
+                            {cName} Sarees ({count} items in stock)
+                          </option>
+                        )
+                      })}
+                    </select>
+                    <span className="text-xs text-stone-500 font-semibold ml-2">
+                      ({matchingProducts.length} sarees available)
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {matchingProducts.length === 0 ? (
                     <div className="col-span-full py-8 text-center text-stone-500">
-                      No sarees found in catalog under "{slotCategory}".
+                      No sarees found in database under "{slotCategory}".
                     </div>
                   ) : (
                     matchingProducts.map((p) => {
+                      const pId = p._id || p.id
+                      const pImg = p.image || p.variants?.[0]?.image || ''
                       const isSelected =
-                        currentSlot.featuredProductId === p.id ||
-                        currentSlot.image === p.image
+                        String(currentSlot.featuredProductId) === String(pId) ||
+                        currentSlot.image === pImg
 
                       return (
                         <div
-                          key={p.id}
+                          key={pId}
                           onClick={() => handlePickProductForCategorySlot(categoryPickerSlotIndex, p)}
                           className={`p-2.5 border cursor-pointer transition-all ${
                             isSelected
@@ -1459,7 +1829,7 @@ export default function AdminHomeCMS() {
                           }`}
                         >
                           <div className="relative aspect-[3/4] bg-stone-100 overflow-hidden mb-2">
-                            <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                            <img src={getCmsImageUrl(pImg)} alt={p.title} className="w-full h-full object-cover" />
                             {isSelected && (
                               <div className="absolute top-2 right-2 bg-[#6D021B] text-white p-1 shadow">
                                 <Check className="w-3.5 h-3.5" />
@@ -1532,18 +1902,19 @@ export default function AdminHomeCMS() {
 
             {/* Sarees Grid */}
             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {allProductsList
+              {dbProducts
                 .filter(
                   (p) =>
-                    p.title.toLowerCase().includes(productSearchTerm.toLowerCase()) ||
-                    p.category.toLowerCase().includes(productSearchTerm.toLowerCase())
+                    (p.title || '').toLowerCase().includes(productSearchTerm.toLowerCase()) ||
+                    (p.category || '').toLowerCase().includes(productSearchTerm.toLowerCase())
                 )
                 .map((p) => {
-                  const isChecked = arrivalsForm.productIds.includes(p.id)
+                  const pId = p._id || p.id
+                  const isChecked = arrivalsForm.productIds.some((id) => String(id) === String(pId))
                   return (
                     <div
-                      key={p.id}
-                      onClick={() => handleToggleArrivalProduct(p.id)}
+                      key={pId}
+                      onClick={() => handleToggleArrivalProduct(pId)}
                       className={`p-2.5 border cursor-pointer transition-all ${
                         isChecked
                           ? 'border-[#6D021B] bg-[#FAF7F2] shadow-xs'
@@ -1551,7 +1922,7 @@ export default function AdminHomeCMS() {
                       }`}
                     >
                       <div className="relative aspect-[3/4] bg-stone-100 overflow-hidden mb-2">
-                        <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                        <img src={getCmsImageUrl(p.image || p.variants?.[0]?.image)} alt={p.title} className="w-full h-full object-cover" />
                         <div
                           className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center ${
                             isChecked ? 'bg-[#6D021B] text-white' : 'bg-white/80 text-stone-400'
@@ -1592,9 +1963,9 @@ export default function AdminHomeCMS() {
             const currentShowcase = cmsData.categoryShowcases.find((cs) => cs.id === pickerShowcaseId)
             if (!currentShowcase) return null
 
-            // Sarees belonging to this category
-            const categoryProducts = allProductsList.filter(
-              (p) => p.category.toLowerCase() === currentShowcase.categoryName.toLowerCase()
+            // Sarees belonging to this category from MongoDB
+            const categoryProducts = dbProducts.filter(
+              (p) => (p.category || '').toLowerCase() === currentShowcase.categoryName.toLowerCase()
             )
 
             return (
@@ -1624,11 +1995,12 @@ export default function AdminHomeCMS() {
                     </div>
                   ) : (
                     categoryProducts.map((p) => {
-                      const isChecked = currentShowcase.productIds.includes(p.id)
+                      const pId = p._id || p.id
+                      const isChecked = currentShowcase.productIds.some((id) => String(id) === String(pId))
                       return (
                         <div
-                          key={p.id}
-                          onClick={() => handleToggleShowcaseProduct(currentShowcase.id, p.id)}
+                          key={pId}
+                          onClick={() => handleToggleShowcaseProduct(currentShowcase.id, pId)}
                           className={`p-2.5 border cursor-pointer transition-all ${
                             isChecked
                               ? 'border-[#6D021B] bg-[#FAF7F2] shadow-xs'
@@ -1636,7 +2008,7 @@ export default function AdminHomeCMS() {
                           }`}
                         >
                           <div className="relative aspect-[3/4] bg-stone-100 overflow-hidden mb-2">
-                            <img src={p.image} alt={p.title} className="w-full h-full object-cover" />
+                            <img src={getCmsImageUrl(p.image || p.variants?.[0]?.image)} alt={p.title} className="w-full h-full object-cover" />
                             <div
                               className={`absolute top-2 right-2 w-5 h-5 flex items-center justify-center ${
                                 isChecked ? 'bg-[#6D021B] text-white' : 'bg-white/80 text-stone-400'
@@ -1695,57 +2067,50 @@ export default function AdminHomeCMS() {
               </button>
             </div>
 
-            {/* Modal Body (Scrollable & Responsive 2 Columns) */}
+            {/* Modal Body */}
             <form onSubmit={handleSaveBannerModal} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 text-xs">
-              {/* Dual Upload Section: Laptop (Desktop) View & Mobile View */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-4 bg-[#FAF7F2] border border-[#EDE4D8]">
-                {/* 1. Desktop / Laptop View Upload */}
-                <div className="space-y-2 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="font-bold text-stone-800 flex items-center gap-1.5 text-xs">
-                        <Laptop className="w-4 h-4 text-[#6D021B]" />
-                        <span>Desktop / Laptop View</span>
-                        <span className="text-red-500">*</span>
-                      </label>
-                      <span className="text-[10px] text-stone-500 font-medium">1024 × 438 px</span>
-                    </div>
-
-                    <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-white hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors shadow-2xs">
-                      <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
-                      <span className="font-bold text-[11px]">
-                        {bannerFormData.image ? 'Change Laptop Photo' : 'Upload Laptop Photo'}
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleBannerImageUpload('image', e)}
-                        className="hidden"
-                      />
+              {/* Upload Section: Laptop & Mobile Screen Banners */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 1. LAPTOP / DESKTOP BANNER */}
+                <div className="p-4 bg-[#FAF7F2] border border-[#EDE4D8] space-y-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="font-bold text-stone-800 flex items-center gap-1.5 text-xs">
+                      <Laptop className="w-4 h-4 text-[#6D021B]" />
+                      <span>Laptop Screen Banner</span>
+                      <span className="text-red-500">*</span>
                     </label>
+                    <span className="text-[10px] text-stone-500 font-medium">1024 × 438 px</span>
                   </div>
 
-                  {/* Laptop Preview Frame */}
+                  <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-white hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
+                    <span className="font-bold text-[11px]">
+                      {bannerFormData.image ? 'Change Laptop Banner' : 'Upload Laptop Banner'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleBannerImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {/* Laptop Banner Preview Frame */}
                   <div className="mt-2">
                     <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block mb-1">
-                      Laptop Live Preview
+                      Laptop Preview
                     </span>
                     <div className="relative aspect-[1024/438] w-full border border-stone-300 bg-stone-900 overflow-hidden flex items-center justify-center shadow-inner">
                       {bannerFormData.image ? (
-                        <>
-                          <img
-                            src={bannerFormData.image}
-                            alt="Desktop Banner Preview"
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
-                           
-                          </div>
-                        </>
+                        <img
+                          src={getCmsImageUrl(bannerFormData.image)}
+                          alt="Laptop Banner Preview"
+                          className="w-full h-full object-cover"
+                        />
                       ) : (
                         <div className="text-stone-400 flex flex-col items-center p-3 text-center">
                           <Laptop className="w-6 h-6 mb-1 opacity-50" />
-                          <span className="text-[11px]">No laptop photo selected</span>
+                          <span className="text-[11px]">No laptop banner chosen</span>
                         </div>
                       )}
                     </div>
@@ -1756,79 +2121,70 @@ export default function AdminHomeCMS() {
                   )}
                 </div>
 
-                {/* 2. Mobile View Upload */}
-                <div className="space-y-2 flex flex-col justify-between border-t md:border-t-0 md:border-l border-[#EDE4D8] pt-4 md:pt-0 md:pl-5">
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="font-bold text-stone-800 flex items-center gap-1.5 text-xs">
-                        <Smartphone className="w-4 h-4 text-[#6D021B]" />
-                        <span>Mobile Portrait View</span>
-                      </label>
-                      <span className="text-[10px] text-stone-500 font-medium">Portrait / 9:16</span>
-                    </div>
-
-                    <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-white hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors shadow-2xs">
-                      <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
-                      <span className="font-bold text-[11px]">
-                        {bannerFormData.mobileImage ? 'Change Mobile Photo' : 'Upload Mobile Photo'}
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => handleBannerImageUpload('mobileImage', e)}
-                        className="hidden"
-                      />
+                {/* 2. MOBILE SCREEN BANNER */}
+                <div className="p-4 bg-[#FAF7F2] border border-[#EDE4D8] space-y-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="font-bold text-stone-800 flex items-center gap-1.5 text-xs">
+                      <Smartphone className="w-4 h-4 text-[#6D021B]" />
+                      <span>Mobile Screen Banner (Optional)</span>
                     </label>
+                    <span className="text-[10px] text-stone-500 font-medium">Portrait (9:16)</span>
                   </div>
 
-                  {/* Mobile Preview Frame */}
-                  <div className="mt-2 flex flex-col items-center">
-                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block mb-1 self-start">
-                      Mobile Live Preview
+                  <label className="flex items-center justify-center gap-2 w-full px-4 py-2.5 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-white hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
+                    <span className="font-bold text-[11px]">
+                      {bannerFormData.mobileImage ? 'Change Mobile Banner' : 'Upload Mobile Banner'}
                     </span>
-                    <div className="relative h-36 w-24 border border-stone-300 bg-stone-900 overflow-hidden flex items-center justify-center shadow-inner">
-                      {bannerFormData.mobileImage || bannerFormData.image ? (
-                        <>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleMobileBannerImageUpload}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {/* Mobile Banner Preview Frame */}
+                  <div className="mt-2">
+                    <span className="text-[10px] uppercase tracking-wider text-stone-400 font-bold block mb-1">
+                      Mobile Preview
+                    </span>
+                    <div className="relative aspect-[9/16] max-h-48 mx-auto w-auto border border-stone-300 bg-stone-900 overflow-hidden flex items-center justify-center shadow-inner">
+                      {bannerFormData.mobileImage ? (
+                        <img
+                          src={getCmsImageUrl(bannerFormData.mobileImage)}
+                          alt="Mobile Banner Preview"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : bannerFormData.image ? (
+                        <div className="relative w-full h-full">
                           <img
-                            src={bannerFormData.mobileImage || bannerFormData.image}
-                            alt="Mobile Banner Preview"
-                            className="w-full h-full object-cover"
+                            src={getCmsImageUrl(bannerFormData.image)}
+                            alt="Mobile Fallback Preview"
+                            className="w-full h-full object-cover opacity-60"
                           />
-                          <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2">
-                           
-                          </div>
-                        </>
+                          <span className="absolute inset-0 flex items-center justify-center text-[10px] text-stone-900 bg-white/70 font-bold text-center px-1">
+                            Auto-fit from Laptop Banner
+                          </span>
+                        </div>
                       ) : (
-                        <div className="text-stone-400 flex flex-col items-center p-2 text-center">
-                          <Smartphone className="w-5 h-5 mb-1 opacity-50" />
-                          <span className="text-[9px]">No mobile photo</span>
+                        <div className="text-stone-400 flex flex-col items-center p-3 text-center">
+                          <Smartphone className="w-6 h-6 mb-1 opacity-50" />
+                          <span className="text-[11px]">No mobile banner chosen</span>
                         </div>
                       )}
                     </div>
-                    {!bannerFormData.mobileImage && bannerFormData.image && (
-                      <span className="text-[10px] text-stone-500 mt-1 italic text-center">
-                        (Using laptop photo as responsive fallback)
-                      </span>
-                    )}
                   </div>
+                  <p className="text-[10px] text-stone-400">
+                    If no mobile banner is uploaded, the laptop banner will automatically be used for mobile devices.
+                  </p>
                 </div>
               </div>
 
               {/* Text Fields: Title, Button, Link */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
                 {/* Title / Caption */}
-                <div className="sm:col-span-3">
-                  <label className="block font-bold text-stone-700 mb-1">
-                    Banner Title / Headline
-                  </label>
-                  <input
-                    type="text"
-                    value={bannerFormData.title}
-                    onChange={(e) => setBannerFormData({ ...bannerFormData, title: e.target.value })}
-                    placeholder="e.g. Festival Collection - Pure Katan Banarasi"
-                    className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EDE4D8] rounded-none focus:outline-none focus:bg-white text-xs"
-                  />
-                </div>
+               
 
                 {/* Button Text */}
                 <div className="sm:col-span-1">

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom'
+import notify from '../../utils/toast'
+import { useConfirm } from '../../context/ConfirmModalContext'
 import {
   LayoutDashboard,
   Package,
@@ -24,81 +26,105 @@ import {
   FileBarChart,
 } from 'lucide-react'
 import vastraaLogo from '../../../public/slides/logo.png'
-import arrival1 from '../../assets/products/arrival-1.jpg'
-import arrival2 from '../../assets/products/arrival-2.jpg'
-import arrival4 from '../../assets/products/arrival-4.jpg'
-import catBanarasi from '../../assets/categories/banarasi.jpg'
-
-const initialNotifications = [
-  {
-    id: 1,
-    type: 'out_of_stock', // stock related
-    title: 'Product Out of Stock!',
-    subtitle: 'Rose Floral Tissue Organza reached 0 units',
-    time: '5m ago',
-    target: '/admin/notifications',
-    isRead: false,
-    badgeColor: 'bg-red-50 text-red-700 border-red-200',
-    icon: PackageX,
-    image: arrival4,
-  },
-  {
-    id: 2,
-    type: 'new_order', // order related
-    title: 'New Customer Order #ORD-9821',
-    subtitle: 'Priya Sharma placed order for ₹12,499 (Banarasi Pure Katan)',
-    time: '12m ago',
-    target: '/admin/orders',
-    isRead: false,
-    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    icon: ShoppingBag,
-    image: catBanarasi,
-  },
-  {
-    id: 3,
-    type: 'low_stock', // stock related
-    title: 'Low Stock Alert: 2 units left',
-    subtitle: 'Maroon Zari Katan Saree is below threshold (≤ 5 units)',
-    time: '25m ago',
-    target: '/admin/notifications',
-    isRead: false,
-    badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-    icon: AlertTriangle,
-    image: arrival1,
-  },
-  {
-    id: 4,
-    type: 'order_cancelled', // order related
-    title: 'Order Cancelled #ORD-6211',
-    subtitle: 'Kavita Sundaram cancelled order for Organza Tissue (₹8,299)',
-    time: '1h ago',
-    target: '/admin/orders',
-    isRead: false,
-    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200',
-    icon: XCircle,
-    image: arrival4,
-  },
-  {
-    id: 5,
-    type: 'low_stock', // stock related
-    title: 'Low Stock Alert: 1 unit left',
-    subtitle: 'Festive Gold Temple Saree needs urgent restocking',
-    time: '3h ago',
-    target: '/admin/notifications',
-    isRead: false,
-    badgeColor: 'bg-amber-50 text-amber-800 border-amber-200',
-    icon: AlertTriangle,
-    image: arrival2,
-  },
-]
+import { useAdminAuth } from '../../context/AdminAuthContext'
+import productService from '../../services/productService'
+import { formatIndianTime } from '../../utils/dateHelper'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function AdminLayout() {
+  const { admin, logout } = useAdminAuth()
+  const confirm = useConfirm()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notificationOpen, setNotificationOpen] = useState(false)
-  const [notifications, setNotifications] = useState(initialNotifications)
+  const [notifications, setNotifications] = useState([])
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
   const notificationRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
+
+  // Load real stock alerts AND new orders from backend DB
+  const fetchStockAlerts = async () => {
+    setLoadingNotifications(true)
+    try {
+      const token = localStorage.getItem('vastraa_admin_token')
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+      // Parallel fetch for stock alerts and live orders
+      const [stockData, ordersRes] = await Promise.all([
+        productService.getStockAlerts().catch(() => ({ alerts: [] })),
+        fetch(`${API_BASE}/orders/admin/all?limit=5`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).then((r) => r.json()).catch(() => ({ success: false })),
+      ])
+
+      const alertList = stockData?.alerts || []
+      const orderList = ordersRes?.success && ordersRes?.data?.orders ? ordersRes.data.orders : []
+
+      const stockNotifications = alertList.map((item) => {
+        const isOutOfStock = item.status === 'Out of Stock' || item.stock <= 0
+        return {
+          id: item.id,
+          productId: item.productId,
+          variantIndex: item.variantIndex,
+          type: isOutOfStock ? 'out_of_stock' : 'low_stock',
+          title: isOutOfStock
+            ? `Out of Stock: ${item.title}`
+            : `Low Stock Alert: ${item.stock} unit${item.stock === 1 ? '' : 's'} left`,
+          subtitle: `${item.variantName ? `${item.variantName} • ` : ''}${item.title} has reached Stock Alert Limit`,
+          time: 'Live',
+          target: '/admin/notifications',
+          isRead: false,
+          badgeColor: isOutOfStock
+            ? 'bg-red-50 text-red-700 border-red-200'
+            : 'bg-amber-50 text-amber-800 border-amber-200',
+          icon: isOutOfStock ? PackageX : AlertTriangle,
+          image: getCmsImageUrl(item.image),
+        }
+      })
+
+      const orderNotifications = orderList.map((ord) => ({
+        id: ord._id,
+        type: 'new_order',
+        title: `New Order: #${ord.orderId}`,
+        subtitle: `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} ordered ${ord.items?.length || 1} saree(s) • ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`,
+        time: formatIndianTime(ord.createdAt),
+        target: '/admin/orders',
+        isRead: Boolean(ord.readByAdmin),
+        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        icon: ShoppingBag,
+        image: getCmsImageUrl(ord.items?.[0]?.image),
+      }))
+
+      setNotifications([...orderNotifications, ...stockNotifications])
+    } catch (err) {
+      console.error('Failed to fetch admin notifications:', err)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchStockAlerts()
+    // Poll every 30 seconds for live updates
+    const interval = setInterval(fetchStockAlerts, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleLogoutClick = async () => {
+    const isConfirmed = await confirm({
+      title: 'Confirm Logout',
+      message: 'Are you sure you want to log out of the Vastraa admin panel? You will need to sign in with email OTP to access again.',
+      confirmText: 'Yes, Logout',
+      cancelText: 'Cancel',
+      type: 'logout',
+    })
+
+    if (isConfirmed) {
+      await logout()
+      notify.success('Logged out of admin portal successfully')
+      navigate('/admin/login')
+    }
+  }
 
   // Close popup when clicking outside
   useEffect(() => {
@@ -255,22 +281,35 @@ export default function AdminLayout() {
           {/* Admin user info & Logout */}
           <div className="flex items-center justify-between px-3 py-2 bg-stone-50 rounded-none-xl border border-stone-200/60">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-none-full bg-[#6D021B] text-[#DEA53B] font-bold text-xs flex items-center justify-center shrink-0">
-                AD
-              </div>
+              {admin?.avatar ? (
+                <img
+                  src={admin.avatar}
+                  alt={admin.name || 'Admin'}
+                  className="w-8 h-8 rounded-none-full object-cover shrink-0 border border-[#EDE4D8]"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-none-full bg-[#6D021B] text-[#DEA53B] font-bold text-xs flex items-center justify-center shrink-0">
+                  {admin?.name ? admin.name.slice(0, 2).toUpperCase() : 'AD'}
+                </div>
+              )}
               <div className="min-w-0">
-                <p className="text-xs font-bold text-stone-800 truncate">Store Admin</p>
-                <p className="text-[10px] text-stone-500 truncate">admin@vastraa.com</p>
+                <p className="text-xs font-bold text-stone-800 truncate">
+                  {admin?.name || 'Store Admin'}
+                </p>
+                <p className="text-[10px] text-stone-500 truncate">
+                  {admin?.email || 'admin@vastraa.com'}
+                </p>
               </div>
             </div>
 
-            <Link
-              to="/admin/login"
-              title="Logout"
-              className="p-1.5 text-stone-400 hover:text-red-600 rounded-none-lg hover:bg-stone-200/50 transition-colors"
+            <button
+              type="button"
+              onClick={handleLogoutClick}
+              title="Logout from Admin Portal"
+              className="p-1.5 text-stone-400 hover:text-red-600 rounded-none-lg hover:bg-red-50 transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
-            </Link>
+            </button>
           </div>
         </div>
       </aside>
@@ -390,7 +429,7 @@ export default function AdminLayout() {
                                 }`}>
                                   {n.title}
                                 </p>
-                                <span className="text-[10px] text-stone-400 shrink-0">{n.time}</span>
+                                <span className="text-[10px] text-green-600 shrink-0">{n.time}</span>
                               </div>
 
                               <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2 leading-relaxed">

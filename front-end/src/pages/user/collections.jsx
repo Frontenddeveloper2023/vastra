@@ -1,305 +1,13 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
-
-// Assets
-import arrival1 from '../../assets/products/arrival-1.jpg'
-import arrival2 from '../../assets/products/arrival-2.jpg'
-import arrival3 from '../../assets/products/arrival-3.jpg'
-import arrival4 from '../../assets/products/arrival-4.jpg'
-import banarasi1 from '../../assets/featured/banarasi-1.jpg'
-import banarasi2 from '../../assets/featured/banarasi-2.jpg'
-import banarasi3 from '../../assets/featured/banarasi-3.jpg'
-import banarasi4 from '../../assets/featured/banarasi-4.jpg'
-import catBanarasi from '../../assets/categories/banarasi.jpg'
-import catBridal from '../../assets/categories/bridal.jpg'
-import catChanderi from '../../assets/categories/chanderi.jpg'
-import catChiffon from '../../assets/categories/chiffon.jpg'
-import catOrganza from '../../assets/categories/organza.jpg'
-import catKanjivaram from '../../assets/categories/kanjivaram.jpg'
+import productService from '../../services/productService'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 const PRODUCTS_PER_PAGE = 12
 
-export const allProductsList = [
-  {
-    id: 1,
-    title: 'Maroon Zari Katan Saree',
-    category: 'Banarasi',
-    price: 4999,
-    originalPrice: 6999,
-    badge: 'Banarasi',
-    color: 'Maroon',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Pure Silk',
-    weight: 850, // in grams (0.85 kg)
-    image: arrival1,
-  },
-  {
-    id: 2,
-    title: 'Festive Gold Temple Saree',
-    category: 'Kanjivaram',
-    price: 5499,
-    originalPrice: 7999,
-    badge: 'Kanjivaram',
-    color: 'Gold',
-    sizes: ['Free Size', 'S', 'M'],
-    fabric: 'Kanjivaram Silk',
-    weight: 950, // in grams (0.95 kg)
-    image: arrival2,
-  },
-  {
-    id: 3,
-    title: 'Emerald Handloom Silk Saree',
-    category: 'Handloom',
-    price: 4299,
-    originalPrice: 5999,
-    badge: 'Handloom',
-    color: 'Green',
-    sizes: ['Free Size', 'M', 'XL'],
-    fabric: 'Tussar Handloom',
-    weight: 750, // in grams (0.75 kg)
-    image: arrival3,
-  },
-  {
-    id: 4,
-    title: 'Rose Floral Tissue Organza',
-    category: 'Organza',
-    price: 3899,
-    originalPrice: 4999,
-    badge: 'Organza',
-    color: 'Pink',
-    sizes: ['Free Size', 'S', 'M', 'L'],
-    fabric: 'Tissue Organza',
-    weight: 550, // in grams (0.55 kg)
-    image: arrival4,
-  },
-  {
-    id: 5,
-    title: 'Maroon Royal Katan Saree',
-    category: 'Banarasi',
-    price: 6499,
-    originalPrice: 8999,
-    badge: 'Banarasi',
-    color: 'Maroon',
-    sizes: ['Free Size', 'M', 'L', 'XL'],
-    fabric: 'Pure Katan',
-    image: banarasi1,
-  },
-  {
-    id: 6,
-    title: 'Raktambari Crimson Bridal Saree',
-    category: 'Bridal',
-    price: 7899,
-    originalPrice: 10499,
-    badge: 'Bridal',
-    color: 'Red',
-    sizes: ['Free Size', 'S', 'M'],
-    fabric: 'Zardozi Silk',
-    image: banarasi2,
-  },
-  {
-    id: 7,
-    title: 'Shikargah Heritage Handloom',
-    category: 'Handloom',
-    price: 8999,
-    originalPrice: 12999,
-    badge: 'Handloom',
-    color: 'Green',
-    sizes: ['Free Size', 'L', 'XL'],
-    fabric: 'Pure Handloom',
-    image: catBanarasi,
-  },
-  {
-    id: 8,
-    title: 'Jangla Pure Gold Zari Saree',
-    category: 'Kanjivaram',
-    price: 6999,
-    originalPrice: 9499,
-    badge: 'Kanjivaram',
-    color: 'Gold',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Gold Brocade',
-    image: banarasi4,
-  },
-  {
-    id: 9,
-    title: 'Royal Scarlet Bridal Edit',
-    category: 'Bridal',
-    price: 9499,
-    originalPrice: 13999,
-    badge: 'Bridal',
-    color: 'Red',
-    sizes: ['Free Size', 'S', 'M', 'L'],
-    fabric: 'Bridal Silk',
-    image: catBridal,
-  },
-  {
-    id: 10,
-    title: 'Chanderi Gold Foil Zari Saree',
-    category: 'Chanderi',
-    price: 3499,
-    originalPrice: 4899,
-    badge: 'Chanderi',
-    color: 'Cream',
-    sizes: ['Free Size', 'M', 'XL'],
-    fabric: 'Chanderi Cotton Silk',
-    image: catChanderi,
-  },
-  {
-    id: 11,
-    title: 'Pastel Lavender Chiffon Drape',
-    category: 'Chiffon',
-    price: 2999,
-    originalPrice: 3999,
-    badge: 'Chiffon',
-    color: 'Pink',
-    sizes: ['Free Size', 'S', 'M'],
-    fabric: 'Pure Chiffon',
-    image: catChiffon,
-  },
-  {
-    id: 12,
-    title: 'Scalloped Border Sheer Organza',
-    category: 'Organza',
-    price: 4599,
-    originalPrice: 5999,
-    badge: 'Organza',
-    color: 'Cream',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Glass Organza',
-    image: catOrganza,
-  },
-  {
-    id: 13,
-    title: 'Royal Indigo Kanjivaram Brocade',
-    category: 'Kanjivaram',
-    price: 7499,
-    originalPrice: 10999,
-    badge: 'Kanjivaram',
-    color: 'Maroon',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Kanjivaram Silk',
-    image: catKanjivaram,
-  },
-  {
-    id: 14,
-    title: 'Meenakari Banarasi Tanchoi Weave',
-    category: 'Banarasi',
-    price: 8299,
-    originalPrice: 11999,
-    badge: 'Banarasi',
-    color: 'Gold',
-    sizes: ['Free Size', 'S', 'M', 'L'],
-    fabric: 'Banarasi Tanchoi',
-    image: banarasi3,
-  },
-  {
-    id: 15,
-    title: 'Temple Border Festive Kanjivaram',
-    category: 'Kanjivaram',
-    price: 6199,
-    originalPrice: 8499,
-    badge: 'Kanjivaram',
-    color: 'Gold',
-    sizes: ['Free Size', 'M', 'XL'],
-    fabric: 'Pure Temple Silk',
-    image: arrival2,
-  },
-  {
-    id: 16,
-    title: 'Blush Rose Tissue Embroidered Organza',
-    category: 'Organza',
-    price: 4799,
-    originalPrice: 6299,
-    badge: 'Organza',
-    color: 'Pink',
-    sizes: ['Free Size', 'S', 'M'],
-    fabric: 'Embroidered Organza',
-    image: catOrganza,
-  },
-  {
-    id: 17,
-    title: 'Vermilion Bridal Heritage Saree',
-    category: 'Bridal',
-    price: 9899,
-    originalPrice: 14499,
-    badge: 'Bridal',
-    color: 'Red',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Heritage Bridal Silk',
-    image: arrival1,
-  },
-  {
-    id: 18,
-    title: 'Olive Handloom Tussar Silk Saree',
-    category: 'Handloom',
-    price: 5299,
-    originalPrice: 7199,
-    badge: 'Handloom',
-    color: 'Green',
-    sizes: ['Free Size', 'L', 'XL'],
-    fabric: 'Pure Tussar Silk',
-    image: catBanarasi,
-  },
-  {
-    id: 19,
-    title: 'Crimson Gold Zardozi Bridal Drape',
-    category: 'Bridal',
-    price: 8799,
-    originalPrice: 12499,
-    badge: 'Bridal',
-    color: 'Red',
-    fabric: 'Pure Zardozi Silk',
-    image: catBridal,
-  },
-  {
-    id: 20,
-    title: 'Peach Blossom Sheer Tissue Organza',
-    category: 'Organza',
-    price: 4399,
-    originalPrice: 5899,
-    badge: 'Organza',
-    color: 'Pink',
-    fabric: 'Tissue Glass Organza',
-    image: arrival4,
-  },
-  {
-    id: 21,
-    title: 'Bandhani Silk Jaipuri Heritage Saree',
-    category: 'Bandhani',
-    price: 5299,
-    originalPrice: 7499,
-    badge: 'Bandhani',
-    color: 'Red',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Georgette Bandhani',
-    image: arrival1,
-  },
-  {
-    id: 22,
-    title: 'Paithani Heritage Peacock Pallu Saree',
-    category: 'Paithani',
-    price: 9499,
-    originalPrice: 13999,
-    badge: 'Paithani',
-    color: 'Green',
-    sizes: ['Free Size', 'S', 'M', 'L'],
-    fabric: 'Pure Silk Paithani',
-    image: arrival2,
-  },
-  {
-    id: 23,
-    title: 'Partywear Shimmer Net Designer Saree',
-    category: 'Partywear',
-    price: 4699,
-    originalPrice: 6599,
-    badge: 'Partywear',
-    color: 'Pink',
-    sizes: ['Free Size', 'M', 'L'],
-    fabric: 'Designer Net & Sequin',
-    image: arrival4,
-  },
-]
+// Export an empty array or fallback for backwards compatibility across legacy imports
+export const allProductsList = []
 
 export default function Collections() {
   const { addToCart } = useCart()
@@ -307,12 +15,53 @@ export default function Collections() {
   const searchQuery = searchParams.get('search') || ''
   const categoryParam = searchParams.get('category') || 'All'
 
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState(categoryParam)
-  const [maxPrice, setMaxPrice] = useState(15000)
+  const [maxPrice, setMaxPrice] = useState(25000)
   const [sortBy, setSortBy] = useState('featured')
   const [addedIds, setAddedIds] = useState([])
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+
+  // Fetch real products from MongoDB backend
+  useEffect(() => {
+    let isMounted = true
+    setLoading(true)
+    productService
+      .getAll({ limit: 200, status: 'Active' })
+      .then((data) => {
+        if (!isMounted) return
+        const list = Array.isArray(data) ? data : data?.products || []
+        // Normalize products: map _id to id and ensure clean price/image
+        const normalized = list.map((p) => {
+          const mainImg = p.image || p.variants?.[0]?.image || p.variants?.[0]?.images?.[0] || ''
+          const mainFabric = p.variants?.[0]?.material || p.fabric || 'Pure Silk'
+          const mainColor = p.variants?.[0]?.color || p.color || ''
+          const mainWeight = p.variants?.[0]?.weight !== undefined ? p.variants[0].weight : (p.weight || 850)
+          return {
+            ...p,
+            id: p._id || p.id,
+            image: mainImg,
+            fabric: mainFabric,
+            color: mainColor,
+            weight: Number(mainWeight) || 850,
+            originalPrice: p.originalPrice || p.price || 0,
+            price: p.price || 0,
+          }
+        })
+        setProducts(normalized)
+      })
+      .catch((err) => {
+        console.error('Failed to load products from database:', err)
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // Sync category with URL when searchParams change (e.g. from Navbar dropdown navigation)
   useEffect(() => {
@@ -334,19 +83,18 @@ export default function Collections() {
     }
   }, [mobileFilterOpen])
 
-  const categories = [
-    { label: 'All Products', value: 'All' },
-    { label: 'Banarasi Sarees', value: 'Banarasi' },
-    { label: 'Kanjivaram Silk', value: 'Kanjivaram' },
-    { label: 'Bridal Edit', value: 'Bridal' },
-    { label: 'Handloom Sarees', value: 'Handloom' },
-    { label: 'Organza Tissue', value: 'Organza' },
-    { label: 'Chanderi Weaves', value: 'Chanderi' },
-    { label: 'Chiffon & Georgette', value: 'Chiffon' },
-    { label: 'Bandhani & Patola', value: 'Bandhani' },
-    { label: 'Paithani Heritage', value: 'Paithani' },
-    { label: 'Partywear Net', value: 'Partywear' },
-  ]
+  // Dynamically compute available categories from real database products
+  const categories = useMemo(() => {
+    const set = new Set()
+    products.forEach((p) => {
+      if (p.category) set.add(p.category.trim())
+    })
+    const list = Array.from(set).map((cat) => ({
+      label: `${cat} Sarees`,
+      value: cat,
+    }))
+    return [{ label: 'All Products', value: 'All' }, ...list]
+  }, [products])
 
   const handleCategorySelect = (val) => {
     setSelectedCategory(val)
@@ -361,25 +109,29 @@ export default function Collections() {
 
   const resetFilters = () => {
     setSelectedCategory('All')
-    setMaxPrice(15000)
+    setMaxPrice(25000)
     setSortBy('featured')
     setCurrentPage(1)
     const newParams = new URLSearchParams()
     setSearchParams(newParams)
   }
 
-  // Filter & Sort Logic
+  // Filter & Sort Logic against real MongoDB products
   const filteredProducts = useMemo(() => {
-    let result = allProductsList.filter((item) => {
-      const matchCategory = selectedCategory === 'All' || item.category === selectedCategory
-      const matchPrice = item.price <= maxPrice
+    let result = products.filter((item) => {
+      const matchCategory =
+        selectedCategory === 'All' ||
+        (item.category && item.category.toLowerCase() === selectedCategory.toLowerCase())
+      const matchPrice = Number(item.price) <= Number(maxPrice)
       const query = searchQuery.trim().toLowerCase()
       const matchSearch =
         !query ||
-        item.title.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query) ||
+        (item.title && item.title.toLowerCase().includes(query)) ||
+        (item.category && item.category.toLowerCase().includes(query)) ||
         (item.fabric && item.fabric.toLowerCase().includes(query)) ||
-        (item.badge && item.badge.toLowerCase().includes(query))
+        (item.description && item.description.toLowerCase().includes(query)) ||
+        (item.badge && item.badge.toLowerCase().includes(query)) ||
+        (item.variants && item.variants.some((v) => (v.color && v.color.toLowerCase().includes(query)) || (v.material && v.material.toLowerCase().includes(query))))
       return matchCategory && matchPrice && matchSearch
     })
 
@@ -388,11 +140,11 @@ export default function Collections() {
     } else if (sortBy === 'price-high') {
       result.sort((a, b) => b.price - a.price)
     } else if (sortBy === 'newest') {
-      result.sort((a, b) => b.id - a.id)
+      result.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     }
 
     return result
-  }, [selectedCategory, maxPrice, sortBy, searchQuery])
+  }, [products, selectedCategory, maxPrice, sortBy, searchQuery])
 
   // Reset to page 1 whenever any filter or search query changes
   useEffect(() => {
@@ -404,7 +156,7 @@ export default function Collections() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }, [])
 
-  // Pagination calculations: 9 products per page (3x3 grid)
+  // Pagination calculations: 12 products per page
   const totalPages = Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE) || 1
 
   const paginatedProducts = useMemo(() => {
@@ -474,38 +226,45 @@ export default function Collections() {
         )}
 
         {/* ─── Main Grid: Filter Sidebar & Product Cards In The Exact Same Row ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start pt-6">
 
           {/* ══════════ LEFT FILTER SIDEBAR (Desktop & Mobile Drawer) ══════════ */}
           <aside
-            className={`lg:col-span-3 bg-white rounded-none-3xl border border-[#EDE4D8] p-6 shadow-sm ${mobileFilterOpen ? 'block fixed inset-x-4 top-20 z-50 max-h-[85vh] overflow-y-auto shadow-2xl animate-fade-in' : 'hidden lg:block'
-              }`}
+            className={`
+              fixed lg:static top-0 right-0 z-50 lg:z-auto h-full lg:h-auto
+              w-[280px] sm:w-[320px] lg:w-full bg-[#FCFAF7] lg:bg-transparent
+              p-5 sm:p-6 lg:p-0 border-l lg:border-l-0 border-[#EDE4D8]
+              transition-transform duration-300 ease-in-out lg:translate-x-0
+              ${mobileFilterOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
+              lg:col-span-3 shrink-0 overflow-y-auto lg:overflow-visible
+            `}
           >
-            {/* Filter Header & Reset & Mobile Close Cross Icon */}
-            <div className="flex items-center justify-between pb-4 border-b border-[#F0E8DC]">
-              <span className="font-serif text-base font-bold uppercase tracking-wider text-[#1F1713]">
-                Filters
-              </span>
-              <div className="flex items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="text-xs font-semibold text-[#8B7C72] hover:text-primary underline cursor-pointer"
-                >
-                  Reset
-                </button>
-                {/* Mobile Cancel / Close Cross (✕) Button */}
-                <button
-                  type="button"
-                  onClick={() => setMobileFilterOpen(false)}
-                  className="lg:hidden p-1 text-stone-400 hover:text-primary hover:bg-[#FAF4EC] rounded-none-full transition-colors cursor-pointer"
-                  aria-label="Close filters"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+            <div className="flex items-center justify-between pb-3 border-b border-[#F0E8DC]">
+              <div className="flex items-center gap-2">
+                <span className="font-serif text-sm sm:text-base font-semibold text-[#1F1713]">
+                  Filters
+                </span>
+                {(selectedCategory !== 'All' || maxPrice < 25000 || searchQuery) && (
+                  <button
+                    type="button"
+                    onClick={resetFilters}
+                    className="text-[11px] text-primary hover:underline font-medium cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
               </div>
+
+              <button
+                type="button"
+                onClick={() => setMobileFilterOpen(false)}
+                className="lg:hidden p-1 text-stone-400 hover:text-primary hover:bg-[#FAF4EC] rounded-none-full transition-colors cursor-pointer"
+                aria-label="Close filters"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
             {/* 1. Category Radio / Checkbox List */}
@@ -513,7 +272,7 @@ export default function Collections() {
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#1F1713] mb-3">
                 Category
               </h4>
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
                 {categories.map((cat) => {
                   const isChecked = selectedCategory === cat.value
                   return (
@@ -549,16 +308,16 @@ export default function Collections() {
               </div>
               <input
                 type="range"
-                min="2000"
-                max="15000"
+                min="1000"
+                max="25000"
                 step="500"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
                 className="w-full accent-primary cursor-pointer"
               />
               <div className="flex justify-between text-[11px] text-[#8B7C72] mt-1 font-light">
-                <span>₹2,000</span>
-                <span>₹15,000+</span>
+                <span>₹1,000</span>
+                <span>₹25,000+</span>
               </div>
             </div>
 
@@ -613,8 +372,18 @@ export default function Collections() {
               </div>
             )}
 
-            {/* Product Grid: Exactly 3 in a Row on Desktop, Top-Aligned with Filter Sidebar */}
-            {filteredProducts.length === 0 ? (
+            {/* Loading Skeleton */}
+            {loading ? (
+              <div className="grid grid-cols-2 min-[700px]:grid-cols-3 gap-3 sm:gap-4 lg:gap-6 animate-pulse">
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <div key={n} className="bg-white p-3 rounded-none-2xl border border-[#EDE4D8] space-y-3">
+                    <div className="aspect-[3/4] bg-stone-200" />
+                    <div className="h-4 bg-stone-200 rounded-none w-3/4" />
+                    <div className="h-3 bg-stone-200 rounded-none w-1/2" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="bg-white rounded-none-3xl border border-[#EDE4D8] p-12 text-center">
                 <p className="font-serif text-lg text-[#1F1713]">
                   {searchQuery ? `No products found matching "${searchQuery}"` : 'No sarees match your selected filters'}
@@ -634,13 +403,14 @@ export default function Collections() {
               </div>
             ) : (
               <div>
-                {/* Responsive Grid: 2 per row (<700px down to 320px), 3 per row (>=700px) */}
+                {/* Responsive Grid: 2 per row (<700px), 3 per row (>=700px) */}
                 <div className="grid grid-cols-2 min-[700px]:grid-cols-3 gap-2.5 sm:gap-4 lg:gap-6">
                   {paginatedProducts.map((product) => {
                     const isAdded = addedIds.includes(product.id)
-                    const discountPercent = Math.round(
-                      ((product.originalPrice - product.price) / product.originalPrice) * 100
-                    )
+                    const discountPercent =
+                      product.originalPrice && product.originalPrice > product.price
+                        ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+                        : 0
 
                     return (
                       <div
@@ -651,17 +421,22 @@ export default function Collections() {
                         <div className="relative aspect-[3/4] w-full overflow-hidden rounded-none-lg sm:rounded-none-xl lg:rounded-none-2xl bg-[#F2ECE2]">
                           <Link to={`/product/${product.id}`} className="block w-full h-full">
                             <img
-                              src={product.image}
+                              src={getCmsImageUrl(product.image)}
                               alt={product.title}
                               loading="lazy"
                               className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
                             />
                           </Link>
 
-
+                          {/* Badge if available */}
+                          {product.badge && (
+                            <span className="absolute top-2 left-2 z-10 bg-primary text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider">
+                              {product.badge}
+                            </span>
+                          )}
                         </div>
 
-                        {/* Product Content Details (Clean without rating stars) */}
+                        {/* Product Content Details */}
                         <div className="pt-2.5 sm:pt-3 pb-0.5 px-0.5 sm:px-1 flex flex-col flex-1 justify-between">
                           <div>
                             <Link to={`/product/${product.id}`} className="block">
@@ -673,11 +448,13 @@ export default function Collections() {
                             {/* Bold Price + Strikethrough Original Price + Discount Pill */}
                             <div className="mt-1 flex items-baseline gap-1 sm:gap-2 flex-wrap">
                               <span className="text-xs sm:text-sm lg:text-base font-bold text-[#1F1713]">
-                                ₹{product.price.toLocaleString('en-IN')}
+                                ₹{Number(product.price || 0).toLocaleString('en-IN')}
                               </span>
-                              <span className="text-[10px] sm:text-xs text-[#9E9189] line-through font-normal">
-                                ₹{product.originalPrice.toLocaleString('en-IN')}
-                              </span>
+                              {product.originalPrice > product.price && (
+                                <span className="text-[10px] sm:text-xs text-[#9E9189] line-through font-normal">
+                                  ₹{Number(product.originalPrice).toLocaleString('en-IN')}
+                                </span>
+                              )}
                               {discountPercent > 0 && (
                                 <span className="text-[9px] sm:text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1 py-0.2 sm:px-1.5 sm:py-0.5 rounded-none">
                                   {discountPercent}% OFF
@@ -686,27 +463,25 @@ export default function Collections() {
                             </div>
                           </div>
 
-                          {/* Full-width "+ Add to Cart" Button (Opens Slide-out Cart Drawer Popup) */}
+                          {/* Full-width "+ Add to Cart" Button */}
                           <button
                             type="button"
                             onClick={(e) => handleAddToCart(product, e)}
-                            className={`mt-2.5 sm:mt-3 w-full py-2 sm:py-2.5 lg:py-3 px-2 sm:px-4 rounded-none-lg sm:rounded-none-xl text-[11px] sm:text-xs lg:text-sm font-medium tracking-wide transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer shadow-2xs active:scale-98 ${isAdded
-                              ? 'bg-secondary text-primary-dark font-semibold'
-                              : 'bg-[#F4ECE1] text-[#2B1F19] hover:bg-primary hover:text-white'
-                              }`}
+                            className={`mt-2.5 sm:mt-3 w-full py-2 sm:py-2.5 lg:py-3 px-2 sm:px-4 rounded-none-lg sm:rounded-none-xl text-[11px] sm:text-xs lg:text-sm font-medium tracking-wide transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer shadow-2xs active:scale-98 ${
+                              isAdded
+                                ? 'bg-secondary text-primary-dark font-semibold'
+                                : 'bg-[#F4ECE1] text-[#2B1F19] hover:bg-primary hover:text-white'
+                            }`}
                           >
                             {isAdded ? (
                               <>
                                 <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                                 </svg>
-                                <span>Added to Cart</span>
+                                <span>Added</span>
                               </>
                             ) : (
-                              <>
-                                <span className="text-sm sm:text-base font-light leading-none">+</span>
-                                <span>Add to Cart</span>
-                              </>
+                              <span>+ Add to Cart</span>
                             )}
                           </button>
                         </div>
@@ -715,73 +490,44 @@ export default function Collections() {
                   })}
                 </div>
 
-                {/* ─── Page Navigation Controls (After 9 Products) ─── */}
+                {/* ─── Pagination Controls ─── */}
                 {totalPages > 1 && (
-                  <div className="mt-12 pt-6 border-t border-[#EDE4D8] flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <p className="text-xs text-[#73655B] font-light">
-                      Page <span className="font-semibold text-[#1F1713]">{currentPage}</span> of{' '}
-                      <span className="font-semibold text-[#1F1713]">{totalPages}</span> ({filteredProducts.length} total sarees)
-                    </p>
-
-                    <div className="flex items-center gap-2 select-none">
-                      {/* Prev Button */}
+                  <div className="mt-10 flex items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      disabled={currentPage === 1}
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      className="px-3.5 py-2 text-xs font-bold rounded-none-xl border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Previous
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                       <button
+                        key={p}
                         type="button"
-                        onClick={() => handlePageChange(currentPage - 1)}
-                        disabled={currentPage === 1}
-                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-none-xl text-xs font-semibold transition-all ${currentPage === 1
-                          ? 'text-stone-300 border border-stone-200 cursor-not-allowed bg-stone-50'
-                          : 'text-[#1F1713] border border-[#EDE4D8] bg-white hover:border-primary hover:text-primary cursor-pointer shadow-2xs'
-                          }`}
+                        onClick={() => handlePageChange(p)}
+                        className={`w-9 h-9 text-xs font-bold rounded-none-xl border transition-colors ${
+                          currentPage === p
+                            ? 'bg-[#6D021B] text-white border-[#6D021B]'
+                            : 'bg-white text-stone-700 border-[#EDE4D8] hover:bg-[#FAF7F2]'
+                        }`}
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                        </svg>
-                        <span>Prev</span>
+                        {p}
                       </button>
-
-                      {/* Numbered Page Buttons */}
-                      <div className="flex items-center gap-1.5">
-                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => {
-                          const isActive = num === currentPage
-                          return (
-                            <button
-                              key={num}
-                              type="button"
-                              onClick={() => handlePageChange(num)}
-                              className={`w-9 h-9 rounded-none-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center border ${isActive
-                                ? 'bg-primary text-white border-primary shadow-xs'
-                                : 'bg-white text-[#40342C] border-[#EDE4D8] hover:border-primary hover:text-primary'
-                                }`}
-                            >
-                              {num}
-                            </button>
-                          )
-                        })}
-                      </div>
-
-                      {/* Next Button */}
-                      <button
-                        type="button"
-                        onClick={() => handlePageChange(currentPage + 1)}
-                        disabled={currentPage === totalPages}
-                        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-none-xl text-xs font-semibold transition-all ${currentPage === totalPages
-                          ? 'text-stone-300 border border-stone-200 cursor-not-allowed bg-stone-50'
-                          : 'text-[#1F1713] border border-[#EDE4D8] bg-white hover:border-primary hover:text-primary cursor-pointer shadow-2xs'
-                          }`}
-                      >
-                        <span>Next</span>
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
-                      </button>
-                    </div>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={currentPage === totalPages}
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      className="px-3.5 py-2 text-xs font-bold rounded-none-xl border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    >
+                      Next
+                    </button>
                   </div>
                 )}
               </div>
             )}
           </main>
-
         </div>
       </div>
     </div>

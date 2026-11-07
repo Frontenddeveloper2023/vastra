@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 const ShippingContext = createContext(null)
 
 const STORAGE_KEY = 'vastraa_shipping_settings'
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 // Default Shipping Configuration
 const DEFAULT_SHIPPING_SETTINGS = {
@@ -44,24 +45,46 @@ export const ShippingProvider = ({ children }) => {
     return DEFAULT_SHIPPING_SETTINGS
   })
 
-  // Save changes to localStorage
+  // Sync shipping settings from MongoDB on mount
   useEffect(() => {
+    fetch(`${API_BASE_URL}/settings`)
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.success && result.data?.shipping) {
+          setShippingSettings(result.data.shipping)
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data.shipping))
+        }
+      })
+      .catch((err) => console.error('Failed to load shipping from DB:', err))
+  }, [])
+
+  // Helper to persist shipping settings to MongoDB and localStorage
+  const saveShippingToDb = async (updated) => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(shippingSettings))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      await fetch(`${API_BASE_URL}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shipping: updated }),
+      })
     } catch (e) {
-      console.error('Failed to save shipping settings', e)
+      console.error('Failed to sync shipping settings to DB:', e)
     }
-  }, [shippingSettings])
+  }
 
   // Update Weight-based configuration
   const updateWeightSettings = (newWeightSettings) => {
-    setShippingSettings((prev) => ({
-      ...prev,
-      weightBased: {
-        ...prev.weightBased,
-        ...newWeightSettings,
-      },
-    }))
+    setShippingSettings((prev) => {
+      const updated = {
+        ...prev,
+        weightBased: {
+          ...prev.weightBased,
+          ...newWeightSettings,
+        },
+      }
+      saveShippingToDb(updated)
+      return updated
+    })
   }
 
   // Add a new City with custom shipping cost
@@ -81,46 +104,56 @@ export const ShippingProvider = ({ children }) => {
       }
     }
 
-    setShippingSettings((prev) => ({
-      ...prev,
-      cityBased: {
-        ...prev.cityBased,
-        cities: [
-          ...prev.cityBased.cities,
-          {
-            id: 'city-' + Date.now(),
-            name: formattedName,
-            cost: Number(cost) || 0,
-          },
-        ],
+    const nextCities = [
+      ...shippingSettings.cityBased.cities,
+      {
+        id: 'city-' + Date.now(),
+        name: formattedName,
+        cost: Number(cost) || 0,
       },
-    }))
+    ]
 
+    const updated = {
+      ...shippingSettings,
+      cityBased: {
+        ...shippingSettings.cityBased,
+        cities: nextCities,
+      },
+    }
+
+    setShippingSettings(updated)
+    saveShippingToDb(updated)
     return { success: true }
   }
 
   // Update an existing city
   const updateCity = (id, newName, newCost) => {
-    setShippingSettings((prev) => ({
-      ...prev,
+    const nextCities = shippingSettings.cityBased.cities.map((c) =>
+      c.id === id ? { ...c, name: newName.trim(), cost: Number(newCost) || 0 } : c
+    )
+    const updated = {
+      ...shippingSettings,
       cityBased: {
-        ...prev.cityBased,
-        cities: prev.cityBased.cities.map((c) =>
-          c.id === id ? { ...c, name: newName.trim(), cost: Number(newCost) || 0 } : c
-        ),
+        ...shippingSettings.cityBased,
+        cities: nextCities,
       },
-    }))
+    }
+    setShippingSettings(updated)
+    saveShippingToDb(updated)
   }
 
   // Remove a city
   const removeCity = (id) => {
-    setShippingSettings((prev) => ({
-      ...prev,
+    const nextCities = shippingSettings.cityBased.cities.filter((c) => c.id !== id)
+    const updated = {
+      ...shippingSettings,
       cityBased: {
-        ...prev.cityBased,
-        cities: prev.cityBased.cities.filter((c) => c.id !== id),
+        ...shippingSettings.cityBased,
+        cities: nextCities,
       },
-    }))
+    }
+    setShippingSettings(updated)
+    saveShippingToDb(updated)
   }
 
   /**

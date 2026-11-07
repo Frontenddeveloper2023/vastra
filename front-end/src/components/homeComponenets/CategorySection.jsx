@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function CategorySection() {
   const { cmsData } = useHomeCMS()
   const sectionData = cmsData?.shopByCategory || {}
   const categories = sectionData.selectedCategories || []
+
+  // If admin has removed all category cards, hide the section gracefully
+  if (categories.length === 0) {
+    return null
+  }
 
   return (
     <section
@@ -82,7 +88,7 @@ export default function CategorySection() {
               {/* Image Frame - Edge to Edge, 100% crisp and clear */}
               <div className="relative aspect-[3/4] lg:aspect-[4/5] w-full overflow-hidden rounded-none-none bg-[#18212C]">
                 <img
-                  src={category.image}
+                  src={getCmsImageUrl(category.image)}
                   alt={category.title}
                   loading="lazy"
                   className="h-full w-full object-cover object-center transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-108"

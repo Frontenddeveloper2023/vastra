@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import Toast from '../../components/Toast'
 import { AdminPagination } from '../../components/admin/AdminUI'
+import { formatIndianDate } from '../../utils/dateHelper'
 
 // Base sales orders data with normalized ISO date strings
 const rawSalesData = [
@@ -170,7 +171,7 @@ export default function AdminReports() {
           <div class="header">
             <h1>VASTRAA SILK STUDIO</h1>
             <p>Official Store Sales Report • ${rangeLabel}</p>
-            <p>Total Filtered Records: ${filteredData.length} | Generated on: ${new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</p>
+            <p>Total Filtered Records: ${filteredData.length} | Generated on: ${formatIndianDate(new Date())}</p>
           </div>
           <table>
             <thead>${tableHeader}</thead>

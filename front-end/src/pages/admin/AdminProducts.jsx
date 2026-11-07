@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Plus,
   Search,
@@ -13,7 +13,6 @@ import {
   AlertCircle,
   Image as ImageIcon,
 } from 'lucide-react'
-import { allProductsList } from '../user/collections'
 import {
   AdminEditButton,
   AdminDeleteButton,
@@ -21,6 +20,9 @@ import {
   AdminCancelButton,
   AdminPagination,
 } from '../../components/admin/AdminUI'
+import { getCmsImageUrl } from '../../utils/imageHelper'
+import { productService } from '../../services/productService'
+import notify from '../../utils/toast'
 
 // Curated Color Suggestions dictionary for instant auto-complete
 const PRESET_COLOR_SUGGESTIONS = [
@@ -78,7 +80,8 @@ const PRESET_COLOR_SUGGESTIONS = [
 ]
 
 export default function AdminProducts() {
-  const [products, setProducts] = useState(allProductsList)
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -350,6 +353,25 @@ export default function AdminProducts() {
 
   const categories = ['All', ...categoryList]
 
+  // Load products directly from MongoDB via productService
+  const fetchProducts = async () => {
+    try {
+      setLoading(true)
+      const data = await productService.getAll({ limit: 500 })
+      const list = data?.products || (Array.isArray(data) ? data : [])
+      setProducts(list)
+    } catch (err) {
+      console.error('Failed to load products:', err)
+      notify.error('Could not load products from database')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProducts()
+  }, [])
+
   // Filtered products list
   const filtered = products.filter((p) => {
     const matchCategory = selectedCategory === 'All' || p.category === selectedCategory
@@ -480,9 +502,16 @@ export default function AdminProducts() {
     })
   }
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm('Are you sure you want to remove this saree from inventory?')) {
-      setProducts((prev) => prev.filter((p) => p.id !== id))
+      try {
+        await productService.delete(id)
+        setProducts((prev) => prev.filter((p) => (p._id || p.id) !== id))
+        notify.success('Product deleted successfully')
+      } catch (err) {
+        console.error('Failed to delete product:', err)
+        notify.error('Could not delete product')
+      }
     }
   }
 
@@ -621,7 +650,7 @@ export default function AdminProducts() {
             : 'text-[#73655B] hover:text-[#1F1713] hover:bg-[#FAF7F2]'
             }`}
         >
-          <span>Product Inventory</span>
+          <span>Products</span>
           <span
             className={`text-[10px] px-2 py-0.5 ${activeTab === 'inventory' ? 'bg-white/20 text-white' : 'bg-stone-200 text-stone-700'
               }`}
@@ -718,15 +747,26 @@ export default function AdminProducts() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#EDE4D8]/60">
-                  {paginatedProducts.map((product) => {
-                    const stock = product.stock ?? 12
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-stone-500">
+                        <div className="w-7 h-7 border-2 border-[#6D021B]/20 border-t-[#6D021B] rounded-full animate-spin mx-auto mb-2" />
+                        <p className="font-semibold text-xs">Loading products from inventory...</p>
+                      </td>
+                    </tr>
+                  ) : paginatedProducts.map((product) => {
+                    const productId = product._id || product.id
+                    const displayImage = getCmsImageUrl(product.image || product.variants?.[0]?.image || product.variants?.[0]?.images?.[0])
+                    const displayFabric = product.fabric || product.variants?.[0]?.material || 'Pure Silk'
+                    const stock = product.totalStock ?? product.stock ?? product.variants?.reduce((sum, v) => sum + (Number(v.stock) || 0), 0) ?? 0
+
                     return (
-                      <tr key={product.id} className="hover:bg-[#FFFDF9] transition-colors">
+                      <tr key={productId} className="hover:bg-[#FFFDF9] transition-colors">
                         {/* Saree Image & Title */}
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-3">
                             <img
-                              src={product.image}
+                              src={displayImage}
                               alt={product.title}
                               className="w-12 h-14 rounded-none-lg object-cover shrink-0 border border-[#EDE4D8] shadow-2xs"
                             />
@@ -750,18 +790,18 @@ export default function AdminProducts() {
 
                         {/* Fabric */}
                         <td className="py-3 px-4 text-stone-600 font-light">
-                          {product.fabric || 'Pure Handloom Silk'}
+                          {displayFabric}
                         </td>
 
                         {/* Price */}
                         <td className="py-3 px-4">
                           <div className="font-sans">
                             <span className="font-bold text-[#1F1713]">
-                              ₹{product.price.toLocaleString('en-IN')}
+                              ₹{(Number(product.price) || 0).toLocaleString('en-IN')}
                             </span>
                             {product.originalPrice && (
                               <span className="block text-[10px] text-stone-400 line-through">
-                                ₹{product.originalPrice.toLocaleString('en-IN')}
+                                ₹{(Number(product.originalPrice) || 0).toLocaleString('en-IN')}
                               </span>
                             )}
                           </div>
@@ -788,7 +828,7 @@ export default function AdminProducts() {
                               title="Edit Saree"
                             />
                             <AdminDeleteButton
-                              onClick={() => handleDelete(product.id)}
+                              onClick={() => handleDelete(productId)}
                               title="Delete Saree"
                             />
                           </div>
@@ -797,7 +837,7 @@ export default function AdminProducts() {
                     )
                   })}
 
-                  {filtered.length === 0 && (
+                  {!loading && filtered.length === 0 && (
                     <tr>
                       <td colSpan="6" className="py-12 text-center text-stone-500">
                         <AlertCircle className="w-8 h-8 text-stone-300 mx-auto mb-2" />

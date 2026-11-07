@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -10,130 +10,76 @@ import {
   ArrowUpRight,
   Sparkles,
 } from 'lucide-react'
-import { allProductsList } from '../user/collections'
-import Toast from '../../components/Toast'
+import productService from '../../services/productService'
+import { getCmsImageUrl } from '../../utils/imageHelper'
+import notify from '../../utils/toast'
 
 export default function AdminNotifications() {
-  // Initial low stock and out of stock items
-  const [items, setItems] = useState([
-    {
-      id: 1,
-      title: 'Maroon Zari Katan Saree',
-      sku: 'VAS-BAN-MAR-4991',
-      category: 'Banarasi',
-      stock: 2,
-      lowStockAlert: 5,
-      price: 4999,
-      image: allProductsList[0]?.image || '',
-      status: 'Low Stock',
-      lastRestocked: '2 days ago',
-    },
-    {
-      id: 2,
-      title: 'Festive Gold Temple Saree',
-      sku: 'VAS-KAN-FES-5492',
-      category: 'Kanjivaram',
-      stock: 1,
-      lowStockAlert: 4,
-      price: 5499,
-      image: allProductsList[1]?.image || '',
-      status: 'Low Stock',
-      lastRestocked: '5 days ago',
-    },
-    {
-      id: 3,
-      title: 'Rose Floral Tissue Organza',
-      sku: 'VAS-ORG-ROS-3894',
-      category: 'Organza',
-      stock: 0,
-      lowStockAlert: 5,
-      price: 3899,
-      image: allProductsList[3]?.image || '',
-      status: 'Out of Stock',
-      lastRestocked: '12 days ago',
-    },
-    {
-      id: 4,
-      title: 'Chanderi Gold Foil Zari Saree',
-      sku: 'VAS-CHA-CHA-3490',
-      category: 'Chanderi',
-      stock: 0,
-      lowStockAlert: 3,
-      price: 3499,
-      image: allProductsList[9]?.image || allProductsList[0]?.image,
-      status: 'Out of Stock',
-      lastRestocked: '2 weeks ago',
-    },
-    {
-      id: 5,
-      title: 'Pastel Lavender Chiffon Drape',
-      sku: 'VAS-CHI-PAS-2991',
-      category: 'Chiffon',
-      stock: 3,
-      lowStockAlert: 6,
-      price: 2999,
-      image: allProductsList[10]?.image || allProductsList[1]?.image,
-      status: 'Low Stock',
-      lastRestocked: 'Yesterday',
-    },
-  ])
-
+  const [items, setItems] = useState([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState('All') // 'All' | 'Low Stock' | 'Out of Stock'
   const [restoreModalItem, setRestoreModalItem] = useState(null)
   const [restoreQuantity, setRestoreQuantity] = useState(15)
-  const [successToast, setSuccessToast] = useState('')
+
+  // Fetch real stock alerts from backend DB
+  const loadAlerts = () => {
+    setLoading(true)
+    productService
+      .getStockAlerts()
+      .then((data) => {
+        const alertList = data?.alerts || []
+        setItems(alertList)
+      })
+      .catch((err) => {
+        console.error('Failed to load real stock alerts:', err)
+        notify.error('Failed to fetch stock alerts')
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    loadAlerts()
+  }, [])
 
   const handleOpenRestore = (item) => {
     setRestoreModalItem(item)
     setRestoreQuantity(15)
   }
 
-  const handleConfirmRestore = (e) => {
+  const handleConfirmRestore = async (e) => {
     e.preventDefault()
     if (!restoreModalItem) return
     const qty = Number(restoreQuantity) || 10
 
-    setItems((prev) =>
-      prev.map((it) => {
-        if (it.id === restoreModalItem.id) {
-          const newStock = it.stock + qty
-          return {
-            ...it,
-            stock: newStock,
-            status: newStock <= it.lowStockAlert ? 'Low Stock' : 'Restocked',
-            lastRestocked: 'Just now',
-          }
-        }
-        return it
+    try {
+      await productService.restockVariant(restoreModalItem.productId, {
+        variantIndex: restoreModalItem.variantIndex,
+        addQuantity: qty,
       })
-    )
-
-    setSuccessToast(`Successfully restored ${qty} units for "${restoreModalItem.title}"!`)
-    setRestoreModalItem(null)
-    setTimeout(() => {
-      setSuccessToast('')
-    }, 3500)
+      notify.success(`Successfully restored +${qty} units for "${restoreModalItem.title}"!`)
+      setRestoreModalItem(null)
+      loadAlerts()
+    } catch (err) {
+      console.error('Failed to restore stock:', err)
+      notify.error('Failed to restore stock on server')
+    }
   }
 
-  const handleQuickAdd = (itemId, addQty) => {
-    setItems((prev) =>
-      prev.map((it) => {
-        if (it.id === itemId) {
-          const newStock = it.stock + addQty
-          return {
-            ...it,
-            stock: newStock,
-            status: newStock <= it.lowStockAlert ? 'Low Stock' : 'Restocked',
-            lastRestocked: 'Just now',
-          }
-        }
-        return it
+  const handleQuickAdd = async (item, addQty) => {
+    try {
+      await productService.restockVariant(item.productId, {
+        variantIndex: item.variantIndex,
+        addQuantity: addQty,
       })
-    )
-    const target = items.find((i) => i.id === itemId)
-    setSuccessToast(`+${addQty} units added to "${target?.title}"`)
-    setTimeout(() => setSuccessToast(''), 3000)
+      notify.success(`+${addQty} units added to "${item.title}"`)
+      loadAlerts()
+    } catch (err) {
+      console.error('Failed to quick add stock:', err)
+      notify.error('Failed to update stock')
+    }
   }
 
   // Filtered
@@ -153,9 +99,6 @@ export default function AdminNotifications() {
 
   return (
     <div className="space-y-6">
-      {/* ─── Success Notification Toast ─── */}
-      <Toast message={successToast} onClose={() => setSuccessToast('')} />
-
       {/* ─── Page Title & Stat Summary ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EDE4D8]">
         <div>
@@ -280,7 +223,11 @@ export default function AdminNotifications() {
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-14 bg-stone-100 border border-[#EDE4D8] overflow-hidden shrink-0 rounded-none">
                           {item.image ? (
-                            <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                            <img
+                              src={getCmsImageUrl(item.image)}
+                              alt={item.title}
+                              className="w-full h-full object-cover"
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-stone-300">
                               <PackageX className="w-5 h-5" />
@@ -291,9 +238,12 @@ export default function AdminNotifications() {
                           <p className="font-bold text-[#1F1713] text-sm leading-tight hover:text-[#6D021B] transition-colors">
                             {item.title}
                           </p>
+                          {item.variantName && (
+                            <p className="text-[11px] font-semibold text-secondary mt-0.5">{item.variantName}</p>
+                          )}
                           <p className="text-[11px] font-mono text-stone-400 mt-0.5">{item.sku}</p>
                           <p className="text-[11px] font-bold text-[#6D021B] font-sans mt-0.5">
-                            ₹{item.price.toLocaleString('en-IN')}
+                            ₹{Number(item.price || 0).toLocaleString('en-IN')}
                           </p>
                         </div>
                       </div>
@@ -341,7 +291,7 @@ export default function AdminNotifications() {
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={() => handleQuickAdd(item.id, 5)}
+                          onClick={() => handleQuickAdd(item, 5)}
                           className="px-2 py-1 bg-white hover:bg-stone-50 border border-[#EDE4D8] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer rounded-none"
                           title="Add 5 units quickly"
                         >
@@ -349,7 +299,7 @@ export default function AdminNotifications() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleQuickAdd(item.id, 10)}
+                          onClick={() => handleQuickAdd(item, 10)}
                           className="px-2 py-1 bg-white hover:bg-stone-50 border border-[#EDE4D8] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer rounded-none"
                           title="Add 10 units quickly"
                         >
@@ -357,7 +307,7 @@ export default function AdminNotifications() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleQuickAdd(item.id, 20)}
+                          onClick={() => handleQuickAdd(item, 20)}
                           className="px-2 py-1 bg-white hover:bg-stone-50 border border-[#EDE4D8] text-[11px] font-bold text-stone-700 transition-colors cursor-pointer rounded-none"
                           title="Add 20 units quickly"
                         >
@@ -416,10 +366,17 @@ export default function AdminNotifications() {
 
             <div className="p-3 bg-[#FAF7F2] border border-[#EDE4D8] rounded-none flex items-center gap-3">
               <div className="w-12 h-14 bg-white border border-[#EDE4D8] overflow-hidden shrink-0">
-                <img src={restoreModalItem.image} alt={restoreModalItem.title} className="w-full h-full object-cover" />
+                <img
+                  src={getCmsImageUrl(restoreModalItem.image)}
+                  alt={restoreModalItem.title}
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div>
                 <p className="font-bold text-[#1F1713] text-xs">{restoreModalItem.title}</p>
+                {restoreModalItem.variantName && (
+                  <p className="text-[11px] font-semibold text-secondary">{restoreModalItem.variantName}</p>
+                )}
                 <p className="text-[11px] font-mono text-stone-500">{restoreModalItem.sku}</p>
                 <p className="text-[11px] text-stone-600 mt-0.5">
                   Current Stock: <strong className="text-red-600 font-mono">{restoreModalItem.stock}</strong> units

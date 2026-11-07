@@ -20,11 +20,15 @@ import {
 import confetti from 'canvas-confetti'
 import { useCart } from '../../context/CartContext'
 import { useShipping } from '../../context/ShippingContext'
+import { useCustomerAuth } from '../../context/CustomerAuthContext'
+import { formatIndianDate } from '../../utils/dateHelper'
 
 export default function Checkout() {
   const navigate = useNavigate()
+  const { customer, token, isAuthenticated, openAuthModal, addAddress: saveCustomerAddressToDb } = useCustomerAuth()
   const {
     cartItems,
+    selectedItemIds,
     selectedCartItems,
     selectedTotalCount,
     selectedSubtotal,
@@ -35,53 +39,50 @@ export default function Checkout() {
 
   const { cityList, calculateShippingCost } = useShipping()
 
-  // Items to checkout: if specific items selected, use them, otherwise full cart
-  const checkoutItems =
-    selectedCartItems && selectedCartItems.length > 0 ? selectedCartItems : cartItems
-  const checkoutCount =
-    selectedCartItems && selectedCartItems.length > 0
-      ? selectedTotalCount
-      : cartItems.reduce((acc, i) => acc + i.quantity, 0)
-  const checkoutSubtotal =
-    selectedCartItems && selectedCartItems.length > 0
-      ? selectedSubtotal
-      : cartItems.reduce((acc, i) => acc + i.price * i.quantity, 0)
+  // Items to checkout: only check out items that the user actually selected in Cart Drawer
+  const checkoutItems = selectedCartItems || []
+  const checkoutCount = selectedTotalCount || 0
+  const checkoutSubtotal = selectedSubtotal || 0
 
   // Calculate Total Weight of all checked-out items (default 800g per saree if not specified)
   const totalOrderWeightGrams = useMemo(() => {
     return checkoutItems.reduce((sum, item) => {
-      const itemWeight = Number(item.weight) || 800
+      const itemWeight = Number(item.weight) || 1200
       return sum + itemWeight * item.quantity
     }, 0)
   }, [checkoutItems])
 
-  // Saved addresses list (already used addresses)
-  const [savedAddresses, setSavedAddresses] = useState([
-    {
-      id: 1,
-      name: 'Priya Sharma',
-      phone: '+91 98401 23456',
-      type: 'Home',
-      street: 'Villa 14, Royal Palm Meadows, 2nd Main Road, Anna Nagar',
-      city: 'Chennai',
-      state: 'Tamil Nadu',
-      pincode: '600040',
-      isDefault: true,
-    },
-    {
-      id: 2,
-      name: 'Priya Sharma',
-      phone: '+91 98401 23456',
-      type: 'Office',
-      street: '7th Floor, Prestige Cyber Towers, OMR Karapakkam',
-      city: 'Chennai',
-      state: 'Tamil Nadu',
-      pincode: '600097',
-      isDefault: false,
-    },
-  ])
+  // Saved addresses list synced from customer MongoDB profile (or fallback guest addresses)
+  const [savedAddresses, setSavedAddresses] = useState([])
 
-  const [selectedAddressId, setSelectedAddressId] = useState(1)
+  // Keep addresses in sync with logged in customer
+  useEffect(() => {
+    if (customer?.addresses && customer.addresses.length > 0) {
+      setSavedAddresses(customer.addresses)
+      // Pick default address or first address
+      const def = customer.addresses.find((a) => a.isDefault) || customer.addresses[0]
+      setSelectedAddressId(def._id || def.id)
+    } else {
+      // Local fallback initial address if new account without saved addresses
+      const localFallback = [
+        {
+          id: 'temp-1',
+          name: customer?.name || 'Priya Sharma',
+          phone: customer?.phone || '+91 98401 23456',
+          type: 'Home',
+          street: 'Villa 14, Royal Palm Meadows, 2nd Main Road, Anna Nagar',
+          city: 'Chennai',
+          state: 'Tamil Nadu',
+          pincode: '600040',
+          isDefault: true,
+        },
+      ]
+      setSavedAddresses(localFallback)
+      setSelectedAddressId('temp-1')
+    }
+  }, [customer])
+
+  const [selectedAddressId, setSelectedAddressId] = useState(null)
   const [isAddingNewAddress, setIsAddingNewAddress] = useState(false)
 
   // New address form state
@@ -106,7 +107,7 @@ export default function Checkout() {
   const [placedOrderDetails, setPlacedOrderDetails] = useState(null)
 
   const selectedAddress =
-    savedAddresses.find((a) => a.id === selectedAddressId) || savedAddresses[0]
+    savedAddresses.find((a) => (a._id || a.id) === selectedAddressId) || savedAddresses[0]
 
   // Dynamic Shipping Calculation based on weight and destination city
   const activeCityName = selectedAddress?.city || (cityList?.[0]?.name || 'Chennai')
@@ -119,8 +120,8 @@ export default function Checkout() {
 
   const formatPrice = (val) => '₹' + Number(val || 0).toLocaleString('en-IN')
 
-  // Save new address
-  const handleSaveNewAddress = (e) => {
+  // Save new address (persists to customer's MongoDB profile if authenticated)
+  const handleSaveNewAddress = async (e) => {
     e.preventDefault()
     if (
       !newAddress.name.trim() ||
@@ -134,14 +135,23 @@ export default function Checkout() {
       return
     }
 
-    const created = {
-      id: Date.now(),
-      ...newAddress,
-      isDefault: false,
+    if (isAuthenticated) {
+      const res = await saveCustomerAddressToDb(newAddress)
+      if (res.success && res.address) {
+        const addrId = res.address._id || res.address.id
+        setSelectedAddressId(addrId)
+      } else {
+        // Fallback local
+        const localCreated = { id: 'temp-' + Date.now(), ...newAddress }
+        setSavedAddresses((prev) => [localCreated, ...prev])
+        setSelectedAddressId(localCreated.id)
+      }
+    } else {
+      const localCreated = { id: 'temp-' + Date.now(), ...newAddress }
+      setSavedAddresses((prev) => [localCreated, ...prev])
+      setSelectedAddressId(localCreated.id)
     }
 
-    setSavedAddresses((prev) => [created, ...prev])
-    setSelectedAddressId(created.id)
     setIsAddingNewAddress(false)
     setAddressError('')
     setNewAddress({
@@ -183,42 +193,115 @@ export default function Checkout() {
     })()
   }
 
-  // Process dummy online transaction
-  const handleProceedToPay = () => {
+  // Process real online transaction and save to Order DB
+  const handleProceedToPay = async () => {
+    if (!isAuthenticated) {
+      openAuthModal()
+      return
+    }
+
+    if (!selectedAddress) {
+      notify?.error ? notify.error('Please select a delivery address.') : alert('Please select a delivery address.')
+      return
+    }
+
     setIsProcessing(true)
 
-    setTimeout(() => {
-      const generatedOrderId = 'ORD-' + Math.floor(1000 + Math.random() * 9000) + '-' + Math.floor(100000 + Math.random() * 900000)
-      const orderInfo = {
-        orderId: generatedOrderId,
-        date: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-        items: [...checkoutItems],
-        subtotal: checkoutSubtotal,
-        shippingFee: calculatedShippingFee,
-        totalAmount: checkoutFinalTotal,
-        orderWeight: totalOrderWeightGrams,
-        shippingCity: activeCityName,
-        paymentMode: selectedPaymentMethod.toUpperCase(),
-        shippingAddress: selectedAddress,
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      
+      const payload = {
+        items: checkoutItems.map((item) => ({
+          productId: item.productId || item._id || item.id,
+          variantId: item.variantId,
+          title: item.title,
+          image: item.image,
+          color: item.color || '',
+          design: item.design || '',
+          material: item.material || item.fabric || '',
+          weight: Number(item.weight) || 850,
+          price: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+        })),
+        shippingAddress: {
+          name: selectedAddress.name || customer?.name,
+          phone: selectedAddress.phone || customer?.phone,
+          street: selectedAddress.street,
+          landmark: selectedAddress.landmark || '',
+          city: selectedAddress.city,
+          state: selectedAddress.state,
+          pincode: selectedAddress.pincode,
+          type: selectedAddress.type || 'Home',
+        },
+        pricing: {
+          subtotal: checkoutSubtotal,
+          shippingFee: calculatedShippingFee,
+          totalWeightGrams: totalOrderWeightGrams,
+          discount: 0,
+          finalTotal: checkoutFinalTotal,
+        },
+        payment: {
+          method: selectedPaymentMethod.toUpperCase(),
+          status: 'Completed',
+          transactionId: `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        },
+        customerInfo: {
+          name: customer?.name || selectedAddress.name,
+          email: customer?.email,
+          phone: customer?.phone || selectedAddress.phone,
+        },
       }
 
-      setPlacedOrderDetails(orderInfo)
-
-      // Remove only the checked-out items from cart
-      checkoutItems.forEach((item) => {
-        removeFromCart(item.cartItemId || item.id)
+      const res = await fetch(`${API_BASE}/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
       })
 
+      const result = await res.json()
+
+      if (result.success && result.data) {
+        const orderData = result.data
+        const orderInfo = {
+          orderId: orderData.orderId,
+          date: formatIndianDate(orderData.createdAt || Date.now()),
+          items: orderData.items,
+          subtotal: orderData.pricing?.subtotal || checkoutSubtotal,
+          shippingFee: orderData.pricing?.shippingFee || calculatedShippingFee,
+          totalAmount: orderData.pricing?.finalTotal || checkoutFinalTotal,
+          orderWeight: orderData.pricing?.totalWeightGrams || totalOrderWeightGrams,
+          shippingCity: selectedAddress.city,
+          paymentMode: orderData.payment?.method || selectedPaymentMethod.toUpperCase(),
+          shippingAddress: orderData.shippingAddress || selectedAddress,
+        }
+
+        setPlacedOrderDetails(orderInfo)
+
+        // Remove only the checked-out items from cart
+        checkoutItems.forEach((item) => {
+          removeFromCart(item.cartItemId || item.id)
+        })
+
+        setCurrentStep('success')
+        triggerCelebration()
+      } else {
+        alert(result.message || 'Failed to place order. Please try again.')
+      }
+    } catch (err) {
+      console.error('Order creation error:', err)
+      alert(err.message || 'Payment processing failed. Please check your connection.')
+    } finally {
       setIsProcessing(false)
-      setCurrentStep('success')
-      triggerCelebration()
-    }, 1200)
+    }
   }
 
   // If no items chosen and no order placed, show back to collections
   if (checkoutItems.length === 0 && currentStep !== 'success') {
     return (
-      <div className="min-h-[70vh] bg-[#FAF7F2] flex items-center justify-center px-4 py-16">
+      <div className="min-h-[70vh] mt-17 bg-[#FAF7F2] flex items-center justify-center px-4 py-16">
         <div className="max-w-md w-full bg-white p-8 text-center shadow-sm">
           <div className="w-16 h-16 bg-[#FAF7F2] text-[#6D021B] flex items-center justify-center mx-auto mb-4">
             <Package className="w-8 h-8" />
@@ -399,16 +482,32 @@ export default function Checkout() {
                   {/* 1. Already Used Addresses List */}
                   {!isAddingNewAddress && (
                     <div className="space-y-3">
+                      {!isAuthenticated && (
+                        <div className="p-3 bg-[#FAF7F2] border border-[#EDE4D8] flex items-center justify-between text-xs">
+                          <span className="text-stone-700">
+                            Have an account? Sign in with <strong>Google</strong> or <strong>Email OTP</strong> to access your saved addresses.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={openAuthModal}
+                            className="font-bold text-[#6D021B] hover:underline cursor-pointer ml-3 whitespace-nowrap"
+                          >
+                            Sign In / Sign Up
+                          </button>
+                        </div>
+                      )}
+
                       {savedAddresses.map((addr) => {
-                        const isSelected = selectedAddressId === addr.id
+                        const addrId = addr._id || addr.id
+                        const isSelected = selectedAddressId === addrId
 
                         return (
                           <div
-                            key={addr.id}
-                            onClick={() => setSelectedAddressId(addr.id)}
+                            key={addrId}
+                            onClick={() => setSelectedAddressId(addrId)}
                             className={`p-4 transition-all cursor-pointer ${
                               isSelected
-                                ? 'bg-[#FAF7F2] shadow-xs'
+                                ? 'bg-[#FAF7F2] shadow-xs ring-1 ring-[#6D021B]'
                                 : 'bg-white hover:bg-stone-50/60'
                             }`}
                           >

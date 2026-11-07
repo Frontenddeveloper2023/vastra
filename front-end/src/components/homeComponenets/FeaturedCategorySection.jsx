@@ -1,10 +1,24 @@
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
-import { allProductsList } from '../../pages/user/collections'
+import productService from '../../services/productService'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function FeaturedCategorySection() {
   const { cmsData } = useHomeCMS()
   const showcases = cmsData?.categoryShowcases || []
+
+  const [dbProducts, setDbProducts] = useState([])
+
+  useEffect(() => {
+    productService
+      .getAll({ limit: 100 })
+      .then((data) => {
+        const list = Array.isArray(data) ? data : data?.products || []
+        setDbProducts(list)
+      })
+      .catch((err) => console.error('Error fetching showcase products:', err))
+  }, [])
 
   if (showcases.length === 0) return null
 
@@ -12,14 +26,14 @@ export default function FeaturedCategorySection() {
     <div className="w-full flex flex-col">
       {showcases.map((showcase) => {
         const productIds = showcase.productIds || []
-        // Look up the 4 selected products, or fallback to first 4 matching category
+        // Look up the 4 selected products from DB, or fallback to first 4 matching category
         let products = productIds
-          .map((id) => allProductsList.find((p) => p.id === id))
+          .map((id) => dbProducts.find((p) => String(p._id || p.id) === String(id)))
           .filter(Boolean)
 
         if (products.length === 0) {
-          products = allProductsList
-            .filter((p) => p.category.toLowerCase() === showcase.categoryName.toLowerCase())
+          products = dbProducts
+            .filter((p) => (p.category || '').toLowerCase() === showcase.categoryName.toLowerCase())
             .slice(0, 4)
         }
 
@@ -110,7 +124,7 @@ export default function FeaturedCategorySection() {
 
                         <Link to={productUrl} className="block w-full h-full">
                           <img
-                            src={product.image}
+                            src={getCmsImageUrl(product.image || product.variants?.[0]?.image)}
                             alt={product.title}
                             loading="lazy"
                             className="h-full w-full object-cover object-center transition-all duration-700 ease-out group-hover:scale-108"
