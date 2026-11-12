@@ -1,5 +1,6 @@
 import Product from '../models/Product.js'
 import { sendSuccess, sendError } from '../utils/apiResponse.js'
+import { emitEvent } from '../services/socketService.js'
 
 /**
  * @desc Get all products with filtering, search, category, pagination
@@ -238,6 +239,15 @@ export const updateProduct = async (req, res, next) => {
 
     const updatedProduct = await product.save()
 
+    // ⚡ Emit WebSocket event for instant stock & product updates
+    emitEvent('stock:updated', {
+      productId: updatedProduct._id,
+      title: updatedProduct.title,
+      totalStock: updatedProduct.totalStock,
+      variants: updatedProduct.variants,
+      message: `Product "${updatedProduct.title}" updated`,
+    })
+
     return sendSuccess(res, { product: updatedProduct }, 'Product updated successfully')
   } catch (error) {
     next(error)
@@ -394,6 +404,15 @@ export const restockProductVariant = async (req, res, next) => {
     product.totalStock = product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
 
     await product.save()
+
+    // ⚡ Emit WebSocket event for restock
+    emitEvent('stock:updated', {
+      productId: product._id,
+      variantIndex: vIdx,
+      newStock: product.variants[vIdx].stock,
+      totalStock: product.totalStock,
+      message: `Stock updated for ${product.title}`,
+    })
 
     return sendSuccess(
       res,

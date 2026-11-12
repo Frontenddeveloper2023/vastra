@@ -24,12 +24,14 @@ import {
   Trash2,
   CheckCheck,
   FileBarChart,
+  RotateCcw,
 } from 'lucide-react'
 import vastraaLogo from '../../../public/slides/logo.png'
 import { useAdminAuth } from '../../context/AdminAuthContext'
 import productService from '../../services/productService'
 import { formatIndianTime } from '../../utils/dateHelper'
 import { getCmsImageUrl } from '../../utils/imageHelper'
+import getSocket from '../../services/socket'
 
 export default function AdminLayout() {
   const { admin, logout } = useAdminAuth()
@@ -43,16 +45,36 @@ export default function AdminLayout() {
   const navigate = useNavigate()
 
   // Load real stock alerts AND new orders from backend DB
+  const getDismissedIds = () => {
+    try {
+      const data = localStorage.getItem('vastraa_admin_dismissed_notifications')
+      return data ? JSON.parse(data) : []
+    } catch {
+      return []
+    }
+  }
+
+  const addDismissedIds = (ids) => {
+    try {
+      const current = new Set(getDismissedIds())
+      ids.forEach((id) => current.add(String(id)))
+      localStorage.setItem('vastraa_admin_dismissed_notifications', JSON.stringify([...current]))
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   const fetchStockAlerts = async () => {
     setLoadingNotifications(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const dismissed = new Set(getDismissedIds())
 
-      // Parallel fetch for stock alerts and live orders
+      // Parallel fetch for stock alerts and all live orders
       const [stockData, ordersRes] = await Promise.all([
         productService.getStockAlerts().catch(() => ({ alerts: [] })),
-        fetch(`${API_BASE}/orders/admin/all?limit=5`, {
+        fetch(`${API_BASE}/orders/admin/all?limit=200`, {
           headers: { Authorization: `Bearer ${token}` },
         }).then((r) => r.json()).catch(() => ({ success: false })),
       ])
@@ -60,40 +82,63 @@ export default function AdminLayout() {
       const alertList = stockData?.alerts || []
       const orderList = ordersRes?.success && ordersRes?.data?.orders ? ordersRes.data.orders : []
 
-      const stockNotifications = alertList.map((item) => {
-        const isOutOfStock = item.status === 'Out of Stock' || item.stock <= 0
-        return {
-          id: item.id,
-          productId: item.productId,
-          variantIndex: item.variantIndex,
-          type: isOutOfStock ? 'out_of_stock' : 'low_stock',
-          title: isOutOfStock
-            ? `Out of Stock: ${item.title}`
-            : `Low Stock Alert: ${item.stock} unit${item.stock === 1 ? '' : 's'} left`,
-          subtitle: `${item.variantName ? `${item.variantName} • ` : ''}${item.title} has reached Stock Alert Limit`,
-          time: 'Live',
-          target: '/admin/notifications',
-          isRead: false,
-          badgeColor: isOutOfStock
-            ? 'bg-red-50 text-red-700 border-red-200'
-            : 'bg-amber-50 text-amber-800 border-amber-200',
-          icon: isOutOfStock ? PackageX : AlertTriangle,
-          image: getCmsImageUrl(item.image),
-        }
-      })
+      const stockNotifications = alertList
+        .filter((item) => !dismissed.has(String(item.id)))
+        .map((item) => {
+          const isOutOfStock = item.status === 'Out of Stock' || item.stock <= 0
+          return {
+            id: item.id,
+            productId: item.productId,
+            variantIndex: item.variantIndex,
+            type: isOutOfStock ? 'out_of_stock' : 'low_stock',
+            title: isOutOfStock
+              ? `Out of Stock: ${item.title}`
+              : `Low Stock Alert: ${item.stock} unit${item.stock === 1 ? '' : 's'} left`,
+            subtitle: `${item.variantName ? `${item.variantName} • ` : ''}${item.title} has reached Stock Alert Limit`,
+            time: 'Live',
+            target: '/admin/notifications',
+            isRead: false,
+            badgeColor: isOutOfStock
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : 'bg-amber-50 text-amber-800 border-amber-200',
+            icon: isOutOfStock ? PackageX : AlertTriangle,
+            image: getCmsImageUrl(item.image),
+          }
+        })
 
-      const orderNotifications = orderList.map((ord) => ({
-        id: ord._id,
-        type: 'new_order',
-        title: `New Order: #${ord.orderId}`,
-        subtitle: `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} ordered ${ord.items?.length || 1} saree(s) • ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`,
-        time: formatIndianTime(ord.createdAt),
-        target: '/admin/orders',
-        isRead: Boolean(ord.readByAdmin),
-        badgeColor: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-        icon: ShoppingBag,
-        image: getCmsImageUrl(ord.items?.[0]?.image),
-      }))
+      const orderNotifications = orderList
+        .filter((ord) => !ord.readByAdmin && !dismissed.has(String(ord._id)))
+        .map((ord) => {
+          const isCancelled = ord.status === 'Cancelled'
+          const isReturn =
+            ord.status === 'Return Requested' ||
+            ord.returnDetails?.returnStatus === 'Requested' ||
+            ord.returnDetails?.status === 'Requested'
+          return {
+            id: ord._id,
+            type: isReturn ? 'return_requested' : isCancelled ? 'order_cancelled' : 'new_order',
+            title: isReturn
+              ? `Return Requested: #${ord.orderId}`
+              : isCancelled
+              ? `Order Cancelled: #${ord.orderId}`
+              : `New Order: #${ord.orderId}`,
+            subtitle: isReturn
+              ? `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} requested a return: ${ord.returnDetails?.reason || 'Product return'}`
+              : isCancelled
+              ? `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} cancelled their order of ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`
+              : `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} ordered ${ord.items?.length || 1} saree(s) • ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`,
+            time: formatIndianTime(ord.updatedAt || ord.createdAt),
+            target: isReturn ? '/admin/returns' : '/admin/orders',
+            isRead: Boolean(ord.readByAdmin),
+            badgeColor: isReturn
+              ? 'bg-amber-50 text-amber-800 border-amber-200'
+              : isCancelled
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : 'bg-emerald-50 text-emerald-800 border-emerald-200',
+            icon: isReturn ? RotateCcw : isCancelled ? XCircle : ShoppingBag,
+            image: getCmsImageUrl(ord.items?.[0]?.image),
+          }
+        })
 
       setNotifications([...orderNotifications, ...stockNotifications])
     } catch (err) {
@@ -105,9 +150,53 @@ export default function AdminLayout() {
 
   useEffect(() => {
     fetchStockAlerts()
-    // Poll every 30 seconds for live updates
+    // Poll every 30 seconds as background fallback
     const interval = setInterval(fetchStockAlerts, 30000)
-    return () => clearInterval(interval)
+
+    // Connect to WebSocket for instant real-time push
+    const socket = getSocket()
+    socket.emit('join:admin')
+
+    const onOrderNew = (data) => {
+      notify.info(data.message || 'New order received!')
+      fetchStockAlerts()
+    }
+
+    const onOrderCancelled = (data) => {
+      notify.error(data.message || 'An order was cancelled by the customer.')
+      fetchStockAlerts()
+    }
+
+    const onReturnNew = (data) => {
+      notify.info(data.message || 'New customer return request received!')
+      fetchStockAlerts()
+    }
+
+    const onStockUpdated = () => {
+      fetchStockAlerts()
+    }
+
+    socket.on('order:new', onOrderNew)
+    socket.on('order:cancelled', onOrderCancelled)
+    socket.on('return:new', onReturnNew)
+    socket.on('stock:updated', onStockUpdated)
+
+    // Listen for custom stock-updated or orders-updated local events
+    const handleImmediateRefresh = () => {
+      fetchStockAlerts()
+    }
+    window.addEventListener('vastraa:stock-updated', handleImmediateRefresh)
+    window.addEventListener('vastraa:order-updated', handleImmediateRefresh)
+
+    return () => {
+      clearInterval(interval)
+      socket.off('order:new', onOrderNew)
+      socket.off('order:cancelled', onOrderCancelled)
+      socket.off('return:new', onReturnNew)
+      socket.off('stock:updated', onStockUpdated)
+      window.removeEventListener('vastraa:stock-updated', handleImmediateRefresh)
+      window.removeEventListener('vastraa:order-updated', handleImmediateRefresh)
+    }
   }, [])
 
   const handleLogoutClick = async () => {
@@ -139,32 +228,75 @@ export default function AdminLayout() {
 
   const unreadCount = notifications.filter((n) => !n.isRead).length
 
-  const handleNotificationClick = (n) => {
-    // Mark clicked notification as read
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === n.id ? { ...item, isRead: true } : item))
-    )
+  const handleNotificationClick = async (n) => {
+    // When clicking a notification, dismiss/hide it permanently so it won't show again
+    addDismissedIds([n.id])
+    setNotifications((prev) => prev.filter((item) => item.id !== n.id))
     setNotificationOpen(false)
+
+    // If it's an order notification, also call backend mark-read
+    if (n.type === 'new_order') {
+      try {
+        const token = localStorage.getItem('vastraa_admin_token')
+        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+        await fetch(`${API_BASE}/orders/admin/mark-read`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } catch (e) {
+        console.error('Failed to mark order as read on server:', e)
+      }
+    }
     navigate(n.target)
   }
 
   const handleDeleteNotification = (id, e) => {
     e.stopPropagation()
+    addDismissedIds([id])
     setNotifications((prev) => prev.filter((n) => n.id !== id))
   }
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
+    const allIds = notifications.map((n) => n.id)
+    addDismissedIds(allIds)
     setNotifications([])
+
+    // Update backend order status as read
+    try {
+      const token = localStorage.getItem('vastraa_admin_token')
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      await fetch(`${API_BASE}/orders/admin/mark-read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch (e) {
+      console.error('Failed to mark orders as read on server:', e)
+    }
   }
 
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+  const handleMarkAllRead = async () => {
+    // Permanently dismiss all current notifications so they will not show another time
+    const allIds = notifications.map((n) => n.id)
+    addDismissedIds(allIds)
+    setNotifications([])
+
+    try {
+      const token = localStorage.getItem('vastraa_admin_token')
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      await fetch(`${API_BASE}/orders/admin/mark-read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    } catch (e) {
+      console.error('Failed to mark orders as read on server:', e)
+    }
   }
 
   const navItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
     { name: 'Products ', path: '/admin/products', icon: Package, badge: '24' },
     { name: 'Orders', path: '/admin/orders', icon: ShoppingBag, badge: '5' },
+    { name: 'Returns', path: '/admin/returns', icon: RotateCcw },
     { name: 'Home CMS', path: '/admin/home-cms', icon: Layers },
     { name: 'Customers', path: '/admin/customers', icon: Users },
     { name: 'Reports', path: '/admin/reports', icon: FileBarChart },

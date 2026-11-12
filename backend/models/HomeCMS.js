@@ -65,6 +65,18 @@ const categoryShowcaseSchema = new mongoose.Schema({
   productIds: [{ type: mongoose.Schema.Types.Mixed }],
 })
 
+// 6. Policy Pages Sub-schemas (Title & Points/Content)
+const policyPointSchema = new mongoose.Schema({
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+})
+
+const policyPageSchema = new mongoose.Schema({
+  title: { type: String, default: '' },
+  subtitle: { type: String, default: '' },
+  points: [policyPointSchema],
+})
+
 // Master HomeCMS Schema
 const homeCMSSchema = new mongoose.Schema(
   {
@@ -73,6 +85,48 @@ const homeCMSSchema = new mongoose.Schema(
     shopByCategory: { type: shopByCategorySchema, default: () => ({}) },
     newArrivals: { type: newArrivalsSchema, default: () => ({}) },
     categoryShowcases: [categoryShowcaseSchema],
+    shippingReturns: {
+      type: policyPageSchema,
+      default: () => ({
+        title: 'Shipping & Returns',
+        subtitle: 'Simple 7-point policy guide for your peace of mind.',
+        points: [
+          { title: 'Free Pan-India Delivery', description: 'Free complimentary shipping on all orders above ₹1,999. A nominal flat ₹99 fee applies to smaller orders.' },
+          { title: 'Quick Dispatch & Delivery Timelines', description: 'Orders are dispatched within 24 to 48 hours. Metro deliveries arrive in 2–4 days; rest of India within 4–7 days.' },
+          { title: '7-Day Return Window', description: 'Customers can request a return within 7 days from the delivery date directly from their "My Orders" page.' },
+          { title: 'Hassle-Free Doorstep Pickup', description: 'Once approved, our courier partner picks up the return package directly from your delivery address at no extra cost.' },
+          { title: 'Return Eligibility Condition', description: 'The saree must be unworn, unwashed, and folded with original brand tags and Silk Mark authenticity seals intact.' },
+          { title: 'Fast & Direct Refunds', description: 'Refunds are released within 48 hours of quality inspection back to your original payment method (or UPI/Bank for COD).' },
+          { title: 'Customer Support Assistance', description: 'Need help with an exchange or tracking? Our support team is available Mon–Sat from 10:00 AM to 7:00 PM IST.' },
+        ],
+      }),
+    },
+    termsConditions: {
+      type: policyPageSchema,
+      default: () => ({
+        title: 'Terms & Conditions',
+        subtitle: 'Store Agreement & Policies for our boutique customers.',
+        points: [
+          { title: 'Acceptance of Terms', description: 'By accessing, browsing, or purchasing from Vastraa, you agree to comply with and be bound by these Terms and Conditions.' },
+          { title: 'Handloom Authenticity & Color Accuracy', description: 'Our sarees are woven by traditional master artisans using natural silks, zari, and dyes. Slight variations in weave texture or hue are a hallmark of authentic handloom.' },
+          { title: 'Pricing & Payments', description: 'All prices are listed in Indian Rupees (₹ INR) inclusive of applicable taxes. We accept UPI, Netbanking, Credit/Debit cards, and Cash On Delivery.' },
+          { title: 'Order Cancellations & Returns', description: 'Orders may be cancelled before the parcel is marked as Shipped. Delivered items are eligible for return within the specified return window (standard 7 days).' },
+        ],
+      }),
+    },
+    privacyPolicy: {
+      type: policyPageSchema,
+      default: () => ({
+        title: 'Privacy Policy',
+        subtitle: 'Data Protection & Trust commitment at Vastraa.',
+        points: [
+          { title: 'Information We Collect', description: 'When you browse, register, or place an order on Vastraa, we collect information necessary to fulfill your request (name, phone, delivery address, email).' },
+          { title: 'Payment Security', description: 'We do not store your credit card, debit card, or UPI PIN on our servers. All transactions are securely processed through RBI-authorized payment gateways featuring 256-bit SSL encryption.' },
+          { title: 'No Third-Party Selling', description: 'Your personal information is strictly confidential. We never sell, rent, or trade your personal details to outside marketing agencies.' },
+          { title: 'Cookies & Preferences', description: 'We use minimal cookies to remember items in your shopping bag and maintain your session securely. You can manage or clear cookie preferences in your browser at any time.' },
+        ],
+      }),
+    },
   },
   { timestamps: true }
 )

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import getSocket from '../services/socket'
 
 const SettingsContext = createContext(null)
 
@@ -59,6 +60,23 @@ export const SettingsProvider = ({ children }) => {
 
   useEffect(() => {
     fetchSettings()
+
+    // ⚡ Real-time WebSocket listener for immediate instant settings updates
+    const socket = getSocket()
+    const onSettingsUpdated = (data) => {
+      if (data?.settings) {
+        setSettings((prev) => ({
+          ...prev,
+          ...data.settings,
+        }))
+      }
+    }
+
+    socket.on('settings:updated', onSettingsUpdated)
+
+    return () => {
+      socket.off('settings:updated', onSettingsUpdated)
+    }
   }, [])
 
   // Save/Update settings in MongoDB

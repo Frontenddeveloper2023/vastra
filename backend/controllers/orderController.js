@@ -1,8 +1,10 @@
 import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import Customer from '../models/Customer.js'
+import Setting from '../models/Setting.js'
 import { ApiError, ApiResponse, asyncHandler } from '../utils/apiResponse.js'
 import { sendOrderCancellationEmail } from '../services/emailService.js'
+import { emitEvent } from '../services/socketService.js'
 
 // Helper: Generate Unique Order ID (e.g. VAST-2026-XXXXX)
 const generateOrderId = () => {
@@ -50,7 +52,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'Customer account not found. Please log in.')
   }
 
-  // Stock deduction & validation
+  // Deduct & update Product total stock & variant stock
+  const updatedProducts = []
   for (const item of items) {
     if (item.productId) {
       const product = await Product.findById(item.productId)
@@ -62,16 +65,36 @@ export const createOrder = asyncHandler(async (req, res) => {
             v.stock = Math.max(0, v.stock - (item.quantity || 1))
           }
         }
-        // Deduct totalStock
-        if (product.totalStock !== undefined) {
+        // Deduct totalStock based on sum of variants or deducted directly
+        if (Array.isArray(product.variants) && product.variants.length > 0) {
+          product.totalStock = product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+        } else if (product.totalStock !== undefined) {
           product.totalStock = Math.max(0, product.totalStock - (item.quantity || 1))
         }
+
+        // Automatically set status to Out of Stock if totalStock is 0
+        if (product.totalStock === 0) {
+          product.status = 'Out of Stock'
+        }
+
         await product.save()
+        updatedProducts.push(product)
       }
     }
   }
 
   const orderId = generateOrderId()
+
+  // Get current global return window from Settings as primary default
+  let globalReturnWindowDays = 7
+  try {
+    const storeSetting = await Setting.findOne()
+    if (storeSetting?.returnPolicy?.returnWindowDays) {
+      globalReturnWindowDays = Number(storeSetting.returnPolicy.returnWindowDays)
+    }
+  } catch (err) {
+    console.error('Failed to read setting returnWindowDays:', err)
+  }
 
   const newOrder = await Order.create({
     orderId,
@@ -92,7 +115,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       weight: Number(i.weight) || 850,
       price: Number(i.price) || 0,
       quantity: Number(i.quantity) || 1,
-      returnWindowDays: i.returnWindowDays !== undefined ? Number(i.returnWindowDays) : 7,
+      returnWindowDays: globalReturnWindowDays,
       isReturnable: i.isReturnable !== undefined ? Boolean(i.isReturnable) : true,
     })),
     shippingAddress: {
@@ -126,6 +149,23 @@ export const createOrder = asyncHandler(async (req, res) => {
       },
     ],
     readByAdmin: false,
+  })
+
+  // ⚡ Emit WebSocket events immediately:
+  // 1. Alert admin of new order & stock deduction
+  emitEvent('order:new', {
+    order: newOrder,
+    message: `New Order: #${newOrder.orderId} placed by ${customer.name || customer.email}`,
+  })
+  emitEvent('stock:updated', {
+    message: 'Stock updated after order placement.',
+    items,
+    updatedProducts: updatedProducts.map((p) => ({
+      _id: p._id,
+      totalStock: p.totalStock,
+      status: p.status,
+      variants: p.variants,
+    })),
   })
 
   return res.status(201).json(
@@ -309,6 +349,16 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
 
   await order.save()
 
+  // ⚡ Emit WebSocket events immediately: Notify user room and specific order room
+  emitEvent('order:status-updated', {
+    orderId: order.orderId,
+    _id: order._id,
+    status: order.status,
+    timeline: order.timeline,
+    deliveredAt: order.deliveredAt,
+    message: `Order #${order.orderId} status changed to "${order.status}"`,
+  })
+
   return res.status(200).json(
     new ApiResponse(200, order, `Order status updated to ${order.status}`)
   )
@@ -344,6 +394,7 @@ export const cancelCustomerOrder = asyncHandler(async (req, res) => {
   }
 
   order.status = 'Cancelled'
+  order.readByAdmin = false // Mark unread for admin so cancellation alert shows immediately
   order.timeline.push({
     status: 'Cancelled',
     message: reason ? `Cancelled by customer: ${reason}` : 'Cancelled by customer before dispatch.',
@@ -352,23 +403,40 @@ export const cancelCustomerOrder = asyncHandler(async (req, res) => {
 
   await order.save()
 
+  // ⚡ Emit WebSocket events immediately: Notify admin room about cancellation
+  emitEvent('order:cancelled', {
+    orderId: order.orderId,
+    _id: order._id,
+    status: 'Cancelled',
+    reason: reason || 'Customer requested cancellation',
+    customerInfo: order.customerInfo,
+    pricing: order.pricing,
+    message: `Order #${order.orderId} was cancelled by customer.`,
+  })
+
   return res.status(200).json(
     new ApiResponse(200, order, 'Order has been successfully cancelled.')
   )
 })
 
 /**
- * @desc Customer: Request Return for Delivered Order (Enforces returnWindowDays per product)
+ * @desc Customer: Request Return for Delivered Order (Enforces returnWindowDays per product or global setting)
  * @route POST /api/orders/:orderId/return
  * @access Private (Customer)
  */
 export const requestCustomerReturn = asyncHandler(async (req, res) => {
   const { orderId } = req.params
   const customerId = req.user?.id
-  const { reason, comments } = req.body
+  const { reason, comments, proofImages } = req.body
 
   if (!reason || !reason.trim()) {
-    throw new ApiError(400, 'Please select a reason for returning this product.')
+    throw new ApiError(400, 'Please select a valid reason for returning this product.')
+  }
+
+  // Require proof of product
+  const proofs = Array.isArray(proofImages) ? proofImages.filter(Boolean) : (proofImages ? [proofImages] : [])
+  if (proofs.length === 0) {
+    throw new ApiError(400, 'Please upload at least one photo proof of the product condition to initiate return.')
   }
 
   const query = {
@@ -388,21 +456,23 @@ export const requestCustomerReturn = asyncHandler(async (req, res) => {
     )
   }
 
-  // Calculate return window
-  // Use deliveredAt timestamp; fallback to last timeline entry or updatedAt
+  // Calculate return window based on global settings or product setting
+  const settings = await Setting.findOne().lean()
+  const globalReturnDays = Number(settings?.returnPolicy?.returnWindowDays) || 7
+
   const deliveredTimeline = order.timeline?.slice().reverse().find((t) => t.status === 'Delivered')
   const deliveryTime = order.deliveredAt || deliveredTimeline?.time || order.updatedAt || order.createdAt
   const now = new Date()
   const daysSinceDelivery = (now.getTime() - new Date(deliveryTime).getTime()) / (1000 * 60 * 60 * 24)
 
-  // Find max return window from items (default 7 days)
-  let maxReturnWindowDays = 7
+  // Use max return window from items, fallback to globalReturnDays
+  let maxReturnWindowDays = globalReturnDays
   let hasReturnableItem = false
   if (Array.isArray(order.items) && order.items.length > 0) {
     order.items.forEach((item) => {
       if (item.isReturnable !== false) {
         hasReturnableItem = true
-        const window = item.returnWindowDays !== undefined ? Number(item.returnWindowDays) : 7
+        const window = item.returnWindowDays !== undefined ? Number(item.returnWindowDays) : globalReturnDays
         if (window > maxReturnWindowDays) maxReturnWindowDays = window
       }
     })
@@ -423,24 +493,142 @@ export const requestCustomerReturn = asyncHandler(async (req, res) => {
 
   // Update order return details
   order.status = 'Return Requested'
+  order.readByAdmin = false // Trigger immediate unread alert for admin
   order.returnDetails = {
     isReturnRequested: true,
     reason: reason.trim(),
     customerComments: comments ? comments.trim() : '',
+    proofImages: proofs,
     requestedAt: now,
     returnStatus: 'Requested',
+    refundAmount: order.pricing?.finalTotal || 0,
   }
 
   order.timeline.push({
     status: 'Return Requested',
-    message: `Customer initiated return request: "${reason.trim()}"${comments ? ` - Note: ${comments.trim()}` : ''}`,
+    message: `Customer requested return: "${reason.trim()}" (Proof uploaded: ${proofs.length} photo(s))${comments ? ` - Note: ${comments.trim()}` : ''}`,
     time: now,
   })
 
   await order.save()
 
+  // ⚡ Emit WebSocket event to admin room for immediate notification
+  const returnAlertData = {
+    orderId: order.orderId,
+    _id: order._id,
+    customerName: order.customerInfo?.name || order.shippingAddress?.name || 'Customer',
+    reason: reason.trim(),
+    proofImages: proofs,
+    totalAmount: order.pricing?.finalTotal,
+    message: `Return Requested: #${order.orderId} - ${reason.trim()}`,
+  }
+
+  emitEvent('return:new', returnAlertData)
+  emitEvent('return:new', returnAlertData, 'admin-room')
+
   return res.status(200).json(
     new ApiResponse(200, order, 'Your return request has been submitted successfully.')
+  )
+})
+
+/**
+ * @desc Admin: Approve or Reject Return Request (Sets courier pickup date & refund days)
+ * @route PATCH /api/orders/admin/:id/return-action
+ * @access Private (Admin)
+ */
+export const handleReturnAction = asyncHandler(async (req, res) => {
+  const { id } = req.params
+  const {
+    action,
+    pickupDate,
+    refundDays,
+    adminRemarks,
+    refundAmount,
+    refundTransactionId,
+    refundIssueReason,
+  } = req.body // action: 'Approved' | 'Rejected' | 'Completed' | 'Refund Issue'
+
+  if (!['Approved', 'Rejected', 'Completed', 'Refund Issue'].includes(action)) {
+    throw new ApiError(400, 'Invalid action. Must be Approved, Rejected, Completed, or Refund Issue.')
+  }
+
+  const order = await Order.findById(id)
+  if (!order) {
+    throw new ApiError(404, 'Order not found.')
+  }
+
+  const now = new Date()
+  order.returnDetails = order.returnDetails || {}
+  order.returnDetails.returnStatus = action
+  order.returnDetails.resolvedAt = now
+
+  if (adminRemarks) {
+    order.returnDetails.adminRemarks = adminRemarks.trim()
+  }
+
+  if (action === 'Approved') {
+    order.status = 'Return Approved'
+    order.returnDetails.pickupDate = pickupDate || ''
+    order.returnDetails.refundDays = refundDays !== undefined ? Number(refundDays) : 3
+
+    order.timeline.push({
+      status: 'Return Approved',
+      message: `Return approved by store.${pickupDate ? ` Courier collection: ${pickupDate}.` : ''}${refundDays ? ` Refund in ${refundDays} days after collection.` : ''}${adminRemarks ? ` Note: ${adminRemarks.trim()}` : ''}`,
+      time: now,
+    })
+  } else if (action === 'Rejected') {
+    order.status = 'Return Rejected'
+    order.returnDetails.returnStatus = 'Rejected'
+    order.timeline.push({
+      status: 'Return Rejected',
+      message: `Return request rejected by store.${adminRemarks ? ` Reason: ${adminRemarks.trim()}` : ''}`,
+      time: now,
+    })
+  } else if (action === 'Completed') {
+    order.status = 'Returned'
+    order.payment = order.payment || {}
+    order.payment.status = 'Refunded'
+    order.returnDetails.returnStatus = 'Completed'
+    order.returnDetails.refundAmount = refundAmount ? Number(refundAmount) : order.pricing?.finalTotal || 0
+    order.returnDetails.refundTransactionId = refundTransactionId || `REF-${Date.now().toString().slice(-6)}`
+
+    order.timeline.push({
+      status: 'Refund Completed',
+      message: `Refund of ₹${order.returnDetails.refundAmount.toLocaleString('en-IN')} has been sent to customer's account (Ref: ${order.returnDetails.refundTransactionId}).`,
+      time: now,
+    })
+  } else if (action === 'Refund Issue') {
+    order.returnDetails.returnStatus = 'Refund Issue'
+    order.returnDetails.refundIssueReason = refundIssueReason || adminRemarks || 'Bank transfer failed'
+
+    order.timeline.push({
+      status: 'Refund Issue',
+      message: `Refund Transfer Issue: ${order.returnDetails.refundIssueReason}. Customer care will contact you or please contact support.`,
+      time: now,
+    })
+  }
+
+  await order.save()
+
+  // ⚡ Emit WebSocket event to customer and order room immediately
+  const returnPayload = {
+    orderId: order.orderId,
+    _id: order._id,
+    status: order.status,
+    returnDetails: order.returnDetails,
+    timeline: order.timeline,
+    message: `Return status updated to ${action} for Order #${order.orderId}`,
+  }
+
+  emitEvent('order:status-updated', returnPayload)
+  emitEvent('order:status-updated', returnPayload, `order_${order.orderId}`)
+  emitEvent('order:status-updated', returnPayload, `order_${order._id}`)
+  if (order.customer) {
+    emitEvent('order:status-updated', returnPayload, `customer_${order.customer}`)
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200, order, `Return request ${action} successfully.`)
   )
 })
 

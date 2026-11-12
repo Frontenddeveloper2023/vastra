@@ -30,6 +30,7 @@ import {
 } from '../../components/admin/AdminUI'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import { formatIndianDate, formatIndianTime } from '../../utils/dateHelper'
+import getSocket from '../../services/socket'
 
 export default function AdminOrders() {
   const [orders, setOrders] = useState([])
@@ -130,6 +131,26 @@ export default function AdminOrders() {
   useEffect(() => {
     fetchOrders()
   }, [page, pageSize, statusFilter, searchQuery])
+
+  // Real-time socket listener for orders
+  useEffect(() => {
+    const socket = getSocket()
+    socket.emit('join:admin')
+
+    const onOrderEvent = () => {
+      fetchOrders()
+    }
+
+    socket.on('order:new', onOrderEvent)
+    socket.on('order:cancelled', onOrderEvent)
+    socket.on('order:status-updated', onOrderEvent)
+
+    return () => {
+      socket.off('order:new', onOrderEvent)
+      socket.off('order:cancelled', onOrderEvent)
+      socket.off('order:status-updated', onOrderEvent)
+    }
+  }, [])
 
   // Allowed progressive transitions: Once changed, previous statuses cannot be selected
   const getAllowedNextStatuses = (currentStatus) => {
@@ -314,14 +335,7 @@ export default function AdminOrders() {
           
         </div>
 
-        <button
-          type="button"
-          onClick={fetchOrders}
-          className="inline-flex items-center gap-2 px-3.5 py-2 bg-white border border-stone-200 rounded-lg text-xs font-semibold text-stone-700 hover:bg-stone-50 shadow-xs cursor-pointer self-start sm:self-auto transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Orders</span>
-        </button>
+       
       </div>
 
       {/* Filter and Search Bar */}
@@ -368,10 +382,7 @@ export default function AdminOrders() {
       {/* Desktop / Tablet View (Horizontal Table with Drag-to-Scroll & Clickable Rows) */}
       <div className="hidden md:block space-y-2">
         <div className="flex items-center justify-between text-[11px] text-stone-500 px-1">
-          <span className="flex items-center gap-1.5 font-medium">
-            <MoveHorizontal className="w-3.5 h-3.5 text-stone-400" />
-            <span>Hold mouse &amp; drag left/right to scroll • Click any order row to view modal</span>
-          </span>
+       
           <span className="text-[10px] text-stone-400">Total: {totalOrders} orders</span>
         </div>
 
@@ -411,7 +422,7 @@ export default function AdminOrders() {
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-xs text-stone-500">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-stone-400" />
-                    <span>Loading real orders from database...</span>
+                    <span>Loading Orders...</span>
                   </td>
                 </tr>
               ) : displayRows.length === 0 ? (
@@ -419,7 +430,6 @@ export default function AdminOrders() {
                   <td colSpan="6" className="py-12 text-center text-xs text-stone-500">
                     <Package className="w-8 h-8 text-stone-300 mx-auto mb-2" />
                     <p className="font-semibold text-stone-700">No orders found</p>
-                    <p className="text-[11px] text-stone-400 mt-0.5">When users place orders on the storefront, they appear here live.</p>
                   </td>
                 </tr>
               ) : (
@@ -786,7 +796,7 @@ export default function AdminOrders() {
                     <span className="text-[10px] font-bold uppercase text-rose-800 tracking-wider block mb-1">
                       Cancellation Reason Recorded
                     </span>
-                    <p className="text-xs text-rose-950 font-medium italic">
+                    <p className="text-xs text-rose-950 font-medium ">
                       &quot;{selectedOrder.timeline?.find((t) => t.status === 'Cancelled')?.message || 'Cancelled by store administration.'}&quot;
                     </p>
                   </div>

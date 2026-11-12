@@ -13,6 +13,7 @@ import {
 import productService from '../../services/productService'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import notify from '../../utils/toast'
+import { getSocket } from '../../services/socket'
 
 export default function AdminNotifications() {
   const [items, setItems] = useState([])
@@ -42,6 +43,19 @@ export default function AdminNotifications() {
 
   useEffect(() => {
     loadAlerts()
+
+    const socket = getSocket()
+    const handleStockUpdate = () => {
+      loadAlerts()
+    }
+
+    socket.on('stock:updated', handleStockUpdate)
+    window.addEventListener('vastraa:stock-updated', handleStockUpdate)
+
+    return () => {
+      socket.off('stock:updated', handleStockUpdate)
+      window.removeEventListener('vastraa:stock-updated', handleStockUpdate)
+    }
   }, [])
 
   const handleOpenRestore = (item) => {

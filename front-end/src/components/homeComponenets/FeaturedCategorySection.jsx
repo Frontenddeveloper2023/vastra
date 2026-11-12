@@ -106,11 +106,12 @@ export default function FeaturedCategorySection() {
               {/* 4 in a row desktop, 2 in a row mobile */}
               <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6 justify-items-stretch">
                 {products.map((product) => {
-                  const productUrl = `/product/${product.id}`
+                  const targetCat = product.category || showcase.categoryName || ''
+                  const productUrl = `/collections?category=${encodeURIComponent(targetCat)}`
 
                   return (
                     <div
-                      key={product.id}
+                      key={product._id || product.id}
                       className="group relative flex flex-col bg-white border border-[#E8DDCE] rounded-none-none p-0 overflow-hidden transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_45px_-10px_rgba(109,2,27,0.15)] hover:border-primary"
                     >
                       {/* Image Frame */}
@@ -118,7 +119,7 @@ export default function FeaturedCategorySection() {
                         {/* Category Tag Badge */}
                         <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
                           <span className="bg-primary text-white text-[9.5px] tracking-[0.16em] uppercase font-bold px-2 py-0.5 shadow-sm border border-secondary/40">
-                            {product.category}
+                            {product.category || showcase.categoryName}
                           </span>
                         </div>
 
@@ -147,7 +148,7 @@ export default function FeaturedCategorySection() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
                               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
                             </svg>
-                            <span className="truncate">View</span>
+                            <span className="truncate">View Category</span>
                           </Link>
                         </div>
 
@@ -174,7 +175,7 @@ export default function FeaturedCategorySection() {
                             to={productUrl}
                             className="mt-2 sm:mt-2.5 w-full py-1.5 sm:py-2 text-[10px] sm:text-[11px] md:text-xs font-bold uppercase tracking-wider text-primary bg-secondary hover:bg-white transition-colors cursor-pointer text-center block"
                           >
-                            View Product →
+                            Explore {product.category || showcase.categoryName} →
                           </Link>
                         </div>
                       </div>

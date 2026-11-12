@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import ConfirmationModal from './ConfirmationModal'
+import { getCmsImageUrl } from '../utils/imageHelper'
 
 export default function CartDrawer() {
   const navigate = useNavigate()
@@ -193,7 +194,7 @@ export default function CartDrawer() {
                   {/* Product Thumbnail */}
                   <div className="relative w-16 h-20 sm:w-18 sm:h-22 rounded-none overflow-hidden bg-stone-100 shrink-0 border border-stone-200/50">
                     <img
-                      src={item.image}
+                      src={getCmsImageUrl(item.image)}
                       alt={item.title}
                       className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
                     />
@@ -297,19 +298,10 @@ export default function CartDrawer() {
                 <span className="font-semibold text-stone-900">{formatPrice(selectedSubtotal)}</span>
               </div>
 
-              <div className="flex justify-between">
-                <span>Estimated Shipping</span>
-                <span className="font-semibold text-stone-900">
-                  {shipping === 0 ? (
-                    <span className="text-emerald-700 font-bold">FREE</span>
-                  ) : (
-                    formatPrice(shipping)
-                  )}
-                </span>
-              </div>
+            
 
               <div className="pt-2.5 border-t border-stone-200 flex justify-between items-baseline">
-                <span className="font-sans text-base font-bold text-stone-900">Payable Amount</span>
+                <span className="font-sans text-base font-bold text-stone-900">Product Total Pice</span>
                 <span className="font-sans text-xl font-bold text-[#6D021B] tabular-nums">
                   {formatPrice(selectedFinalTotal)}
                 </span>

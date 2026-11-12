@@ -163,19 +163,19 @@ export default function Footer() {
                 </button>
               </li>
               <li>
-                <a href="#shipping" className="hover:text-secondary transition-colors duration-200">
+                <Link to="/shipping-returns" className="hover:text-secondary transition-colors duration-200">
                   Shipping &amp; Returns
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#terms" className="hover:text-secondary transition-colors duration-200">
+                <Link to="/terms" className="hover:text-secondary transition-colors duration-200">
                   Terms &amp; Conditions
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="#privacy" className="hover:text-secondary transition-colors duration-200">
+                <Link to="/privacy" className="hover:text-secondary transition-colors duration-200">
                   Privacy Policy
-                </a>
+                </Link>
               </li>
             </ul>
           </div>

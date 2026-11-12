@@ -195,7 +195,7 @@ export default function AdminDashboard() {
         <div className="lg:col-span-2 bg-white border border-[#EDE4D8] p-5 shadow-2xs h-fit">
           <div className="flex items-center justify-between pb-4 border-b border-[#EDE4D8]">
             <div>
-              <h2 className="font-serif text-lg font-bold text-[#1F1713]">Recent Customer Orders</h2>
+              <h2 className="font-normal text-lg font-bold text-[#1F1713]">Recent Customer Orders</h2>
               <p className="text-xs text-[#73655B]">Live orders placed on the storefront</p>
             </div>
             <Link
@@ -274,7 +274,7 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between pb-3 border-b border-[#EDE4D8]">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-amber-500" />
-                <h3 className="font-serif text-base font-bold text-[#1F1713]">Low Stock Alerts</h3>
+                <h3 className="font-normal text-base font-bold text-[#1F1713]">Low Stock Alerts</h3>
               </div>
               <Link
                 to="/admin/notifications"

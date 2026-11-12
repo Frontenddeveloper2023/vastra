@@ -1,4 +1,5 @@
 import Setting from '../models/Setting.js'
+import { emitEvent } from '../services/socketService.js'
 
 // Default fallback cities if none initialized
 const DEFAULT_CITIES = [
@@ -108,7 +109,21 @@ export const updateSettings = async (req, res) => {
     if (updates.adminEmail !== undefined) current.adminEmail = updates.adminEmail
     if (updates.authMethod !== undefined) current.authMethod = updates.authMethod
 
+    if (updates.returnPolicy) {
+      current.returnPolicy = {
+        ...current.returnPolicy,
+        ...updates.returnPolicy,
+      }
+    }
+
     await current.save()
+
+    // ⚡ Emit WebSocket event for instant global update across all open user pages
+    emitEvent('settings:updated', {
+      settings: current,
+      returnPolicy: current.returnPolicy,
+      message: 'Store settings updated',
+    })
 
     res.status(200).json({
       success: true,

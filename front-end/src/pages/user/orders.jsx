@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import AccountSidebar from '../../components/AccountSidebar'
 import { useCustomerAuth } from '../../context/CustomerAuthContext'
+import { useSettings } from '../../context/SettingsContext'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import { formatIndianDate } from '../../utils/dateHelper'
+import getSocket from '../../services/socket'
+import { RotateCcw } from 'lucide-react'
 
 export default function Orders() {
   const { isAuthenticated, token } = useCustomerAuth()
+  const { settings } = useSettings()
+  const globalReturnDays = settings?.returnPolicy?.returnWindowDays || 7
   const navigate = useNavigate()
   const [filter, setFilter] = useState('All')
   const [orders, setOrders] = useState([])
@@ -20,12 +25,8 @@ export default function Orders() {
   }, [isAuthenticated, navigate])
 
   // Fetch real customer orders from backend MongoDB
-  useEffect(() => {
+  const fetchMyOrders = () => {
     if (!token) return
-
-    let isMounted = true
-    setLoading(true)
-
     const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
     fetch(`${API_BASE}/orders/my-orders`, {
       headers: {
@@ -34,7 +35,6 @@ export default function Orders() {
     })
       .then((res) => res.json())
       .then((result) => {
-        if (!isMounted) return
         if (result.success && Array.isArray(result.data)) {
           setOrders(result.data)
         }
@@ -43,11 +43,24 @@ export default function Orders() {
         console.error('Failed to fetch orders:', err)
       })
       .finally(() => {
-        if (isMounted) setLoading(false)
+        setLoading(false)
       })
+  }
+
+  useEffect(() => {
+    setLoading(true)
+    fetchMyOrders()
+
+    // Real-time socket listener for immediate updates on user's order list
+    const socket = getSocket()
+    const onStatusUpdated = () => {
+      fetchMyOrders()
+    }
+
+    socket.on('order:status-updated', onStatusUpdated)
 
     return () => {
-      isMounted = false
+      socket.off('order:status-updated', onStatusUpdated)
     }
   }, [token])
 
@@ -151,6 +164,27 @@ export default function Orders() {
 
                   const thumbSrc = getCmsImageUrl(firstItem?.image)
 
+                  // Check return eligibility based on DB Settings return policy
+                  const isDelivered = (order.status || '').toLowerCase() === 'delivered' || Boolean(order.deliveredAt)
+                  let isWithinReturnWindow = false
+                  let daysRemaining = 0
+                  if (isDelivered) {
+                    const deliveryTime = order.deliveredAt || order.updatedAt || order.createdAt
+                    const daysSince = (new Date().getTime() - new Date(deliveryTime).getTime()) / (1000 * 60 * 60 * 24)
+                    const allowedDays = Number(globalReturnDays) || 5
+                    daysRemaining = Math.max(0, Math.ceil(allowedDays - daysSince))
+                    isWithinReturnWindow = daysSince <= allowedDays
+                  }
+                  const canReturnOrder =
+                    isDelivered &&
+                    isWithinReturnWindow &&
+                    !order.returnDetails?.isReturnRequested &&
+                    !['Return Requested', 'Return Approved', 'Returned'].includes(order.status)
+
+                  const hasReturnStatus =
+                    order.returnDetails?.isReturnRequested ||
+                    ['Return Requested', 'Return Approved', 'Returned'].includes(order.status)
+
                   return (
                     <div
                       key={order._id || order.orderId}
@@ -199,6 +233,16 @@ export default function Orders() {
                           >
                             View Order Details
                           </Link>
+
+                          {/* Amazon-style Return Status / Return Button */}
+                          
+
+                          {hasReturnStatus && (
+                            <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-purple-800 bg-purple-50 px-2.5 py-0.5">
+                              <RotateCcw className="w-3 h-3" />
+                              <span> {order.returnDetails?.status || order.status}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

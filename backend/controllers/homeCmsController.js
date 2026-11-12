@@ -124,7 +124,16 @@ export const getHomeCMS = async (req, res, next) => {
  */
 export const updateHomeCMS = async (req, res, next) => {
   try {
-    const { heroBanners, styleDirection, shopByCategory, newArrivals, categoryShowcases } = req.body
+    const {
+      heroBanners,
+      styleDirection,
+      shopByCategory,
+      newArrivals,
+      categoryShowcases,
+      shippingReturns,
+      termsConditions,
+      privacyPolicy,
+    } = req.body
 
     let cms = await HomeCMS.findOne().sort({ createdAt: -1 })
     if (!cms) {
@@ -136,6 +145,9 @@ export const updateHomeCMS = async (req, res, next) => {
     if (shopByCategory !== undefined) cms.shopByCategory = shopByCategory
     if (newArrivals !== undefined) cms.newArrivals = newArrivals
     if (categoryShowcases !== undefined) cms.categoryShowcases = categoryShowcases
+    if (shippingReturns !== undefined) cms.shippingReturns = shippingReturns
+    if (termsConditions !== undefined) cms.termsConditions = termsConditions
+    if (privacyPolicy !== undefined) cms.privacyPolicy = privacyPolicy
 
     const saved = await cms.save()
     return sendSuccess(res, { cms: saved }, 'Home CMS updated successfully')

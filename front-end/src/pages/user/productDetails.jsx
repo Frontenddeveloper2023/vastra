@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
 import { useCustomerAuth } from '../../context/CustomerAuthContext'
 import productService from '../../services/productService'
 import { getCmsImageUrl } from '../../utils/imageHelper'
+import { getSocket } from '../../services/socket'
 
 // Fallback Asset Imports in case DB product has no images
 import arrival1 from '../../assets/products/arrival-1.jpg'
@@ -33,60 +34,94 @@ export default function ProductDetails() {
   const [addedAnimation, setAddedAnimation] = useState(false)
 
   // Fetch real product by ID from MongoDB
-  useEffect(() => {
-    let isMounted = true
-    setLoading(true)
-    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
-
-    productService
+  const fetchProduct = useCallback((isInitial = false) => {
+    if (isInitial) setLoading(true)
+    return productService
       .getById(id)
       .then((data) => {
-        if (!isMounted) return
         setProduct(data)
-        // If variants exist, default to first variant's attributes
-        if (data?.variants && data.variants.length > 0) {
-          const v0 = data.variants[0]
-          setSelectedVariantIndex(0)
-          setSelectedColor(v0.color || '')
-          setSelectedDesign(v0.design || '')
-          setSelectedMaterial(v0.material || '')
-          // Set first available image
-          const v0Imgs = (v0.images && v0.images.length > 0) ? v0.images : (v0.image ? [v0.image] : [])
-          const firstImg = v0Imgs[0] || data.image || arrival1
-          setActiveImage(getCmsImageUrl(firstImg))
-        } else {
-          setActiveImage(getCmsImageUrl(data?.image || arrival1))
-        }
+        if (isInitial) {
+          // If variants exist, default to first variant's attributes
+          if (data?.variants && data.variants.length > 0) {
+            const v0 = data.variants[0]
+            setSelectedVariantIndex(0)
+            setSelectedColor(v0.color || '')
+            setSelectedDesign(v0.design || '')
+            setSelectedMaterial(v0.material || '')
+            const v0Imgs = (v0.images && v0.images.length > 0) ? v0.images : (v0.image ? [v0.image] : [])
+            const firstImg = v0Imgs[0] || data.image || arrival1
+            setActiveImage(getCmsImageUrl(firstImg))
+          } else {
+            setActiveImage(getCmsImageUrl(data?.image || arrival1))
+          }
 
-        // Fetch related products in the same category
-        if (data?.category) {
-          productService
-            .getAll({ category: data.category, limit: 5, status: 'Active' })
-            .then((relData) => {
-              if (!isMounted) return
-              const list = Array.isArray(relData) ? relData : relData?.products || []
-              setRelatedProducts(list.filter((p) => String(p._id || p.id) !== String(id)).slice(0, 4))
-            })
-            .catch(() => {})
+          // Fetch related products in the same category
+          if (data?.category) {
+            productService
+              .getAll({ category: data.category, limit: 5, status: 'Active' })
+              .then((relData) => {
+                const list = Array.isArray(relData) ? relData : relData?.products || []
+                setRelatedProducts(list.filter((p) => String(p._id || p.id) !== String(id)).slice(0, 4))
+              })
+              .catch(() => {})
+          }
         }
       })
       .catch((err) => {
         console.error('Failed to fetch product details:', err)
       })
       .finally(() => {
-        if (isMounted) setLoading(false)
+        if (isInitial) setLoading(false)
       })
+  }, [id])
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+    fetchProduct(true)
+
+    // Listen to real-time stock updates via WebSocket
+    const socket = getSocket()
+    const handleStockUpdate = (payload) => {
+      // If current product ID is affected, or general stock update
+      const affected = payload?.items?.some(
+        (it) => String(it.productId || it.id) === String(id)
+      ) || String(payload?.productId) === String(id) || payload?.updatedProducts?.some((p) => String(p._id || p.id) === String(id))
+
+      if (affected || !payload?.productId) {
+        fetchProduct(false)
+      }
+    }
+
+    socket.on('stock:updated', handleStockUpdate)
 
     return () => {
-      isMounted = false
+      socket.off('stock:updated', handleStockUpdate)
     }
-  }, [id])
+  }, [id, fetchProduct])
 
   // Current active variant
   const currentVariant = useMemo(() => {
     if (!product?.variants || product.variants.length === 0) return null
     return product.variants[selectedVariantIndex] || product.variants[0]
   }, [product, selectedVariantIndex])
+
+  // Current available stock for this variant / product
+  const maxStock = useMemo(() => {
+    if (!product) return 0
+    if (currentVariant && currentVariant.stock !== undefined) {
+      return Math.max(0, Number(currentVariant.stock))
+    }
+    return Math.max(0, Number(product.totalStock || 0))
+  }, [product, currentVariant])
+
+  // Ensure selected quantity never exceeds max available stock
+  useEffect(() => {
+    if (maxStock > 0 && quantity > maxStock) {
+      setQuantity(maxStock)
+    } else if (maxStock === 0) {
+      setQuantity(1)
+    }
+  }, [maxStock, quantity])
 
   // Build gallery for current variant (up to 4 images) or product fallback
   const gallery = useMemo(() => {
@@ -498,26 +533,34 @@ export default function ProductDetails() {
 
             {/* Quantity Selector */}
             <div className="mt-6">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#1F1713] block mb-2.5">
-                Quantity:
-              </span>
+              <div className="flex items-center justify-between mb-2.5">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#1F1713]">
+                  Quantity:
+                </span>
+                {maxStock > 0 && (
+                  <span className="text-xs font-medium text-stone-500">
+                    Max available: <strong className="text-primary font-bold">{maxStock}</strong>
+                  </span>
+                )}
+              </div>
               <div className="inline-flex items-center bg-white border border-[#EDE4D8] rounded-none-xl shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                  disabled={quantity <= 1}
+                  disabled={quantity <= 1 || maxStock <= 0}
                   className="w-10 h-10 flex items-center justify-center text-stone-600 hover:text-primary disabled:text-stone-300 disabled:cursor-not-allowed cursor-pointer text-lg font-medium transition-colors"
                   aria-label="Decrease quantity"
                 >
                   −
                 </button>
                 <span className="w-12 text-center text-sm font-bold text-[#1F1713] select-none">
-                  {quantity}
+                  {maxStock <= 0 ? 0 : quantity}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setQuantity((prev) => prev + 1)}
-                  className="w-10 h-10 flex items-center justify-center text-stone-600 hover:text-primary cursor-pointer text-lg font-medium transition-colors"
+                  onClick={() => setQuantity((prev) => Math.min(maxStock, prev + 1))}
+                  disabled={quantity >= maxStock || maxStock <= 0}
+                  className="w-10 h-10 flex items-center justify-center text-stone-600 hover:text-primary disabled:text-stone-300 disabled:cursor-not-allowed cursor-pointer text-lg font-medium transition-colors"
                   aria-label="Increase quantity"
                 >
                   +
@@ -527,108 +570,52 @@ export default function ProductDetails() {
 
             {/* ONLY "Add to Cart" Button */}
             <div className="mt-8">
-              <button
-                type="button"
-                onClick={handleAddToCart}
-                className={`w-full py-3.5 sm:py-4 px-6 rounded-none-xl sm:rounded-none-2xl font-semibold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 cursor-pointer shadow-md transition-all duration-200 active:scale-98 ${addedAnimation
-                    ? 'bg-[#15803D] text-white shadow-lg'
-                    : 'bg-[#6D021B] hover:bg-[#580015] text-white'
-                  }`}
-              >
-                {addedAnimation ? (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                    <span>Added to Cart!</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
-                    </svg>
-                    <span>Add to Cart • ₹{(Number(product.price || 0) * quantity).toLocaleString('en-IN')}</span>
-                  </>
-                )}
-              </button>
+              {maxStock <= 0 ? (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-3.5 sm:py-4 px-6 rounded-none-xl sm:rounded-none-2xl font-semibold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 bg-stone-300 text-stone-500 cursor-not-allowed shadow-none"
+                >
+                  <svg className="w-5 h-5 text-stone-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  <span>Out of Stock</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  className={`w-full py-3.5 sm:py-4 px-6 rounded-none-xl sm:rounded-none-2xl font-semibold text-sm sm:text-base tracking-wide flex items-center justify-center gap-2.5 cursor-pointer shadow-md transition-all duration-200 active:scale-98 ${addedAnimation
+                      ? 'bg-[#15803D] text-white shadow-lg'
+                      : 'bg-[#6D021B] hover:bg-[#580015] text-white'
+                    }`}
+                >
+                  {addedAnimation ? (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                      </svg>
+                      <span>Added to Cart!</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+                      </svg>
+                      <span>Add to Cart • ₹{(Number(product.price || 0) * quantity).toLocaleString('en-IN')}</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
-            {/* Return Policy & Delivery Highlights */}
-            <div className="mt-6 pt-5 border-t border-[#EDE4D8] grid grid-cols-2 gap-3 text-left">
-              <div className="p-3 bg-stone-50/80 rounded-xl border border-stone-200/70 flex items-start gap-2.5">
-                <span className="w-8 h-8 rounded-lg bg-[#6D021B]/10 flex items-center justify-center shrink-0 text-[#6D021B] font-bold text-sm">
-                  ↺
-                </span>
-                <div>
-                  <h4 className="text-xs font-bold text-stone-900">
-                    {product?.isReturnable !== false
-                      ? `${product?.returnWindowDays || 7}-Day Hassle-Free Returns`
-                      : 'Non-Returnable Item'}
-                  </h4>
-                  <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                    {product?.isReturnable !== false
-                      ? 'Easy return window starts upon product delivery'
-                      : 'Final sale luxury piece, quality thoroughly inspected'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-stone-50/80 rounded-xl border border-stone-200/70 flex items-start gap-2.5">
-                <span className="w-8 h-8 rounded-lg bg-[#6D021B]/10 flex items-center justify-center shrink-0 text-[#6D021B] font-bold text-sm">
-                  ✓
-                </span>
-                <div>
-                  <h4 className="text-xs font-bold text-stone-900">100% Authentic Handloom</h4>
-                  <p className="text-[11px] text-stone-500 mt-0.5 leading-snug">
-                    Certified silk mark & master artisan zari weaving guarantee
-                  </p>
-                </div>
-              </div>
-            </div>
+       
 
           </div>
 
         </div>
 
-        {/* ─── Related Products Section ─── */}
-        {relatedProducts.length > 0 && (
-          <div className="mt-20 pt-12 border-t border-[#EDE4D8]">
-            <h2 className="font-serif text-2xl sm:text-3xl font-bold text-[#1F1713] mb-8 text-center">
-              You May Also Adore
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
-              {relatedProducts.map((rel) => {
-                const relImg = getCmsImageUrl(rel.image || rel.variants?.[0]?.images?.[0] || rel.variants?.[0]?.image || '')
-                return (
-                  <Link
-                    key={rel._id || rel.id}
-                    to={`/product/${rel._id || rel.id}`}
-                    className="group bg-white rounded-none-xl overflow-hidden border border-[#EDE4D8] shadow-xs hover:shadow-md transition-all duration-300"
-                  >
-                    <div className="relative aspect-[3/4] overflow-hidden bg-[#F2ECE2]">
-                      <img
-                        src={relImg}
-                        alt={rel.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      />
-                    </div>
-                    <div className="p-3.5">
-                      <p className="text-[10px] tracking-wider uppercase text-secondary font-semibold truncate">
-                        {rel.category}
-                      </p>
-                      <h3 className="font-serif text-xs sm:text-sm font-semibold text-[#1F1713] truncate mt-0.5 group-hover:text-primary transition-colors">
-                        {rel.title}
-                      </h3>
-                      <p className="font-bold text-xs sm:text-sm text-[#1F1713] mt-1.5">
-                        ₹{Number(rel.price || 0).toLocaleString('en-IN')}
-                      </p>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-        )}
+
 
       </div>
     </div>

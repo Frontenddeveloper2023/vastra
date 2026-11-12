@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   FileText,
   FileSpreadsheet,
@@ -8,45 +8,95 @@ import {
   CheckCircle2,
   X,
   Filter,
+  RefreshCw,
 } from 'lucide-react'
 import Toast from '../../components/Toast'
 import { AdminPagination } from '../../components/admin/AdminUI'
 import { formatIndianDate } from '../../utils/dateHelper'
 
-// Base sales orders data with normalized ISO date strings
-const rawSalesData = [
-  { id: 'ORD-9821', isoDate: '2026-10-28', date: '28 Oct 2026', customer: 'Priya Sharma', items: 'Banarasi Pure Katan Saree', category: 'Banarasi', amount: 12499, payment: 'UPI', status: 'Delivered' },
-  { id: 'ORD-8930', isoDate: '2026-09-12', date: '12 Sep 2026', customer: 'Priya Sharma', items: 'Kanjivaram Silk Temple Border', category: 'Kanjivaram', amount: 9890, payment: 'Card', status: 'Delivered' },
-  { id: 'ORD-7612', isoDate: '2026-10-14', date: '14 Oct 2026', customer: 'Ananya Deshmukh', items: 'Raktambari Crimson Saree', category: 'Banarasi', amount: 7899, payment: 'Net Banking', status: 'Delivered' },
-  { id: 'ORD-9912', isoDate: '2026-11-01', date: '01 Nov 2026', customer: 'Meera Iyer', items: 'Bridal Heritage Saree', category: 'Bridal', amount: 14999, payment: 'UPI', status: 'Shipped' },
-  { id: 'ORD-5541', isoDate: '2026-10-19', date: '19 Oct 2026', customer: 'Deepa Varma', items: 'Maroon Zari Katan Saree', category: 'Banarasi', amount: 7499, payment: 'COD', status: 'Delivered' },
-  { id: 'ORD-6211', isoDate: '2026-09-20', date: '20 Sep 2026', customer: 'Kavita Sundaram', items: 'Organza Tissue Embroidered', category: 'Organza', amount: 8299, payment: 'UPI', status: 'Cancelled' },
-  { id: 'ORD-4410', isoDate: '2026-10-22', date: '22 Oct 2026', customer: 'Pooja Reddy', items: 'Chanderi Gold Foil Zari Saree', category: 'Chanderi', amount: 4899, payment: 'Card', status: 'Delivered' },
-  { id: 'ORD-3321', isoDate: '2026-10-26', date: '26 Oct 2026', customer: 'Sneha Patel', items: 'Pastel Lavender Chiffon Drape', category: 'Chiffon', amount: 3999, payment: 'UPI', status: 'Delivered' },
-  { id: 'ORD-2104', isoDate: '2026-11-03', date: '03 Nov 2026', customer: 'Gayatri Nair', items: 'Temple Border Festive Kanjivaram', category: 'Kanjivaram', amount: 6199, payment: 'UPI', status: 'Delivered' },
-]
-
 export default function AdminReports() {
+  const [orders, setOrders] = useState([])
+  const [loading, setLoading] = useState(true)
   const [dateRange, setDateRange] = useState('all') // 'all' | 'today' | 'week' | 'month' | 'year' | 'custom'
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('All')
   const [downloadToast, setDownloadToast] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const RECORDS_PER_PAGE = 8
+  const [pageSize, setPageSize] = useState(10)
+
+  // Fetch real order reports from backend DB
+  const fetchReportOrders = async () => {
+    setLoading(true)
+    try {
+      const token = localStorage.getItem('vastraa_admin_token')
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const res = await fetch(`${API_BASE}/orders/admin/all?limit=500`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const result = await res.json()
+
+      if (result.success && result.data && Array.isArray(result.data.orders)) {
+        setOrders(result.data.orders)
+      } else {
+        setOrders([])
+      }
+    } catch (err) {
+      console.error('Failed to fetch real reports orders:', err)
+      setOrders([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchReportOrders()
+  }, [])
+
+  // Transform backend orders into report rows
+  const normalizedData = useMemo(() => {
+    return orders.map((ord) => {
+      const isoDate = ord.createdAt ? ord.createdAt.slice(0, 10) : ''
+      const customerName =
+        ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'
+      const itemsTitle =
+        ord.items?.map((it) => `${it.title} (x${it.quantity || 1})`).join(', ') ||
+        'Saree'
+      const category = ord.items?.[0]?.material || ord.items?.[0]?.design || 'Silk'
+      const amount = ord.pricing?.finalTotal || 0
+      const payment = ord.payment?.method || 'ONLINE'
+      const status = ['Placed', 'Processing'].includes(ord.status)
+        ? 'On process'
+        : ord.status || 'On process'
+
+      return {
+        id: ord.orderId || ord._id,
+        rawOrder: ord,
+        isoDate,
+        date: formatIndianDate(ord.createdAt || Date.now()),
+        customer: customerName,
+        items: itemsTitle,
+        category,
+        amount,
+        payment,
+        status,
+        timestamp: new Date(ord.createdAt || Date.now()).getTime(),
+      }
+    })
+  }, [orders])
 
   // Filtered dataset reflecting both preset periods and manual calendar dates
   const filteredData = useMemo(() => {
-    // Fixed reference anchor for demo: 2026-11-03
-    const refDate = new Date('2026-11-03T23:59:59')
+    const now = new Date()
+    const todayIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10)
 
-    return rawSalesData.filter((row) => {
+    return normalizedData.filter((row) => {
       // Status filter
       if (selectedStatus !== 'All' && row.status !== selectedStatus) {
         return false
       }
-
-      const rowDate = new Date(row.isoDate + 'T00:00:00')
 
       // Custom Calendar Range Filter
       if (dateRange === 'custom') {
@@ -57,35 +107,34 @@ export default function AdminReports() {
 
       // Quick Preset Time Filters
       if (dateRange === 'today') {
-        return row.isoDate === '2026-11-03'
+        return row.isoDate === todayIso
       }
 
       if (dateRange === 'week') {
-        // Last 7 days
-        const sevenDaysAgo = new Date(refDate)
+        const sevenDaysAgo = new Date(now)
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-        return rowDate >= sevenDaysAgo && rowDate <= refDate
+        return row.timestamp >= sevenDaysAgo.getTime()
       }
 
       if (dateRange === 'month') {
-        // November 2026 + October 2026 recent month window
-        const thirtyDaysAgo = new Date(refDate)
+        const thirtyDaysAgo = new Date(now)
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-        return rowDate >= thirtyDaysAgo && rowDate <= refDate
+        return row.timestamp >= thirtyDaysAgo.getTime()
       }
 
       if (dateRange === 'year') {
-        return row.isoDate.startsWith('2026')
+        const currentYear = now.getFullYear().toString()
+        return row.isoDate.startsWith(currentYear)
       }
 
       // 'all'
       return true
     })
-  }, [dateRange, startDate, endDate, selectedStatus])
+  }, [normalizedData, dateRange, startDate, endDate, selectedStatus])
 
   // Dynamic calculated metric totals matching filtered records
   const totalSalesRevenue = useMemo(() => {
-    return filteredData.reduce((acc, curr) => acc + curr.amount, 0)
+    return filteredData.reduce((acc, curr) => acc + (curr.amount || 0), 0)
   }, [filteredData])
 
   const deliveredCount = useMemo(() => {
@@ -93,7 +142,7 @@ export default function AdminReports() {
   }, [filteredData])
 
   const inTransitCount = useMemo(() => {
-    return filteredData.filter((s) => s.status === 'Shipped').length
+    return filteredData.filter((s) => ['Shipped', 'On process'].includes(s.status)).length
   }, [filteredData])
 
   // Export to CSV / Excel format (Exports EXACTLY the filtered records)
@@ -104,7 +153,8 @@ export default function AdminReports() {
     }
 
     let csvContent = 'data:text/csv;charset=utf-8,'
-    csvContent += 'Order ID,Date,Customer Name,Saree Product,Category,Amount (INR),Payment Mode,Order Status\n'
+    csvContent +=
+      'Order ID,Date,Customer Name,Saree Product,Category,Amount (INR),Payment Mode,Order Status\n'
     filteredData.forEach((row) => {
       csvContent += `"${row.id}","${row.date}","${row.customer}","${row.items}","${row.category}","${row.amount}","${row.payment}","${row.status}"\n`
     })
@@ -112,7 +162,10 @@ export default function AdminReports() {
     const encodedUri = encodeURI(csvContent)
     const link = document.createElement('a')
     link.setAttribute('href', encodedUri)
-    const filterTag = dateRange === 'custom' ? `${startDate || 'start'}_to_${endDate || 'end'}` : dateRange
+    const filterTag =
+      dateRange === 'custom'
+        ? `${startDate || 'start'}_to_${endDate || 'end'}`
+        : dateRange
     link.setAttribute('download', `Vastraa_sales_report_${filterTag}.csv`)
     document.body.appendChild(link)
     link.click()
@@ -133,7 +186,8 @@ export default function AdminReports() {
     if (!printWindow) return
 
     const title = 'Vastraa Sales & Orders Report'
-    const tableHeader = '<tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Product</th><th>Category</th><th>Amount</th><th>Status</th></tr>'
+    const tableHeader =
+      '<tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Product</th><th>Category</th><th>Amount</th><th>Status</th></tr>'
 
     let tableRows = ''
     filteredData.forEach((row) => {
@@ -143,12 +197,15 @@ export default function AdminReports() {
         <td>${row.customer}</td>
         <td>${row.items}</td>
         <td>${row.category}</td>
-        <td>₹${row.amount.toLocaleString()}</td>
+        <td>₹${row.amount.toLocaleString('en-IN')}</td>
         <td>${row.status}</td>
       </tr>`
     })
 
-    const rangeLabel = dateRange === 'custom' ? `Custom Range: ${startDate || 'From Start'} to ${endDate || 'Latest'}` : `Period: ${dateRange.toUpperCase()}`
+    const rangeLabel =
+      dateRange === 'custom'
+        ? `Custom Range: ${startDate || 'From Start'} to ${endDate || 'Latest'}`
+        : `Period: ${dateRange.toUpperCase()}`
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -178,10 +235,10 @@ export default function AdminReports() {
             <tbody>${tableRows}</tbody>
           </table>
           <div class="summary">
-            <strong>Total Filtered Revenue: ₹${totalSalesRevenue.toLocaleString()}</strong> | Delivered: ${deliveredCount} | In Transit: ${inTransitCount}
+            <strong>Total Filtered Revenue: ₹${totalSalesRevenue.toLocaleString('en-IN')}</strong> | Delivered: ${deliveredCount} | In Transit: ${inTransitCount}
           </div>
           <div class="footer">
-            <p>© 2026 Vastraa. Confidential Store Sales Report.</p>
+            <p>© ${new Date().getFullYear()} Vastraa. Confidential Store Sales Report.</p>
           </div>
         </body>
       </html>
@@ -205,20 +262,14 @@ export default function AdminReports() {
   }
 
   // Pagination calculation
-  const totalPages = Math.ceil(filteredData.length / RECORDS_PER_PAGE) || 1
+  const totalItems = filteredData.length
+  const startIndex = (currentPage - 1) * pageSize
   const paginatedData = useMemo(() => {
-    return filteredData.slice(
-      (currentPage - 1) * RECORDS_PER_PAGE,
-      currentPage * RECORDS_PER_PAGE
-    )
-  }, [filteredData, currentPage])
+    return filteredData.slice(startIndex, startIndex + pageSize)
+  }, [filteredData, startIndex, pageSize])
 
-  const handlePageChange = (page) => {
-    if (page < 1 || page > totalPages) return
-    setCurrentPage(page)
-  }
-
-  const isFiltered = dateRange !== 'all' || selectedStatus !== 'All' || startDate || endDate
+  const isFiltered =
+    dateRange !== 'all' || selectedStatus !== 'All' || startDate || endDate
 
   return (
     <div className="space-y-6">
@@ -229,13 +280,17 @@ export default function AdminReports() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-[#EDE4D8]">
         <div>
           <h1 className="font-normal text-2xl sm:text-3xl font-bold text-[#1F1713]">
-            Sales & Orders Reports
+            Reports
           </h1>
-         
+          <p className="text-xs text-stone-500 mt-1">
+            Real-time sales revenue, live order reports, and accounting exports
+          </p>
         </div>
 
         {/* Action Download Buttons */}
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
+   
+
           <button
             type="button"
             onClick={downloadExcel}
@@ -246,23 +301,17 @@ export default function AdminReports() {
             <span>Download Excel ({filteredData.length})</span>
           </button>
 
-          <button
-            type="button"
-            onClick={downloadPdf}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#6D021B] hover:bg-[#580115] text-white text-xs font-bold uppercase tracking-wider rounded-none cursor-pointer transition-colors shadow-xs border border-[#DEA53B]/50"
-            title={`Download ${filteredData.length} records as PDF`}
-          >
-            <FileText className="w-4 h-4 text-[#DEA53B]" />
-            <span>Download PDF ({filteredData.length})</span>
-          </button>
+      
         </div>
       </div>
 
-      {/* Dynamic Summary Cards (Live Updates Based On Filtered Results) */}
+      {/* Dynamic Summary Cards (Live Updates Based On Real Filtered Results) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="p-4 bg-white border border-[#EDE4D8] rounded-none shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">Filtered Sales Value</span>
+            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">
+              Filtered Sales Value
+            </span>
             <div className="w-8 h-8 bg-[#FAF7F2] border border-[#EDE4D8] flex items-center justify-center text-[#6D021B]">
               <IndianRupee className="w-4 h-4" />
             </div>
@@ -270,12 +319,16 @@ export default function AdminReports() {
           <p className="text-2xl font-bold font-normal text-[#1F1713] mt-2">
             ₹{totalSalesRevenue.toLocaleString('en-IN')}
           </p>
-        
+          <span className="text-[11px] text-stone-400 mt-0.5 block">
+            Across {filteredData.length} total orders
+          </span>
         </div>
 
         <div className="p-4 bg-white border border-[#EDE4D8] rounded-none shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">Orders Delivered</span>
+            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">
+              Orders Delivered
+            </span>
             <div className="w-8 h-8 bg-[#FAF7F2] border border-[#EDE4D8] flex items-center justify-center text-emerald-700">
               <ShoppingBag className="w-4 h-4" />
             </div>
@@ -283,11 +336,16 @@ export default function AdminReports() {
           <p className="text-2xl font-bold font-normal text-emerald-700 mt-2">
             {deliveredCount} Orders
           </p>
+          <span className="text-[11px] text-stone-400 mt-0.5 block">
+            Successfully completed
+          </span>
         </div>
 
         <div className="p-4 bg-white border border-[#EDE4D8] rounded-none shadow-2xs">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">Orders In Transit</span>
+            <span className="text-[12px] font-bold uppercase tracking-wider text-stone-700">
+              Orders In Progress / Shipped
+            </span>
             <div className="w-8 h-8 bg-[#FAF7F2] border border-[#EDE4D8] flex items-center justify-center text-blue-700">
               <ShoppingBag className="w-4 h-4" />
             </div>
@@ -295,6 +353,9 @@ export default function AdminReports() {
           <p className="text-2xl font-bold font-normal text-blue-700 mt-2">
             {inTransitCount} {inTransitCount === 1 ? 'Order' : 'Orders'}
           </p>
+          <span className="text-[11px] text-stone-400 mt-0.5 block">
+            Active orders currently in fulfillment
+          </span>
         </div>
       </div>
 
@@ -349,9 +410,11 @@ export default function AdminReports() {
               className="px-3 py-1.5 bg-[#FAF7F2] border border-[#EDE4D8] text-xs font-medium focus:outline-none focus:border-[#6D021B] rounded-none cursor-pointer"
             >
               <option value="All">All Statuses</option>
-              <option value="Delivered">Delivered</option>
+              <option value="On process">On process</option>
               <option value="Shipped">Shipped</option>
+              <option value="Delivered">Delivered</option>
               <option value="Cancelled">Cancelled</option>
+              <option value="Returned">Returned</option>
             </select>
 
             {isFiltered && (
@@ -417,10 +480,10 @@ export default function AdminReports() {
       <div className="bg-white border border-[#EDE4D8] rounded-none shadow-2xs overflow-hidden">
         <div className="px-5 py-3.5 bg-[#FAF7F2] border-b border-[#EDE4D8] flex items-center justify-between">
           <div>
-            <h3 className=" text-sm font-normal text-[#1F1713]">
+            <h3 className="text-sm font-bold text-[#1F1713]">
               Sales & Orders Record Sheet
             </h3>
-           
+            <p className="text-[11px] text-stone-500">Live transaction records from database</p>
           </div>
           <span className="text-xs font-bold text-stone-600">
             {filteredData.length} {filteredData.length === 1 ? 'Record' : 'Records'}
@@ -428,7 +491,7 @@ export default function AdminReports() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-xs min-w-[750px]">
             <thead>
               <tr className="border-b border-[#EDE4D8] bg-white text-[#73655B] uppercase font-bold tracking-wider text-[11px]">
                 <th className="py-3 px-4">Order ID</th>
@@ -442,45 +505,58 @@ export default function AdminReports() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[#EDE4D8]/60">
-              {paginatedData.map((row) => (
-                <tr key={row.id} className="hover:bg-[#FFFDF9] transition-colors">
-                  <td className="py-3 px-4 font-mono font-bold text-stone-800">{row.id}</td>
-                  <td className="py-3 px-4 text-stone-500">{row.date}</td>
-                  <td className="py-3 px-4 font-bold text-[#1F1713]">{row.customer}</td>
-                  <td className="py-3 px-4 text-stone-800 font-medium">{row.items}</td>
-                  <td className="py-3 px-4 text-stone-600">{row.category}</td>
-                  <td className="py-3 px-4 text-stone-500">{row.payment}</td>
-                  <td className="py-3 px-4 font-bold font-sans text-[#6D021B]">
-                    ₹{row.amount.toLocaleString('en-IN')}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span
-                      className={`inline-block px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-none ${
-                        row.status === 'Delivered'
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                          : row.status === 'Shipped'
-                          ? 'bg-blue-50 text-blue-800 border-blue-200'
-                          : 'bg-red-50 text-red-800 border-red-200'
-                      }`}
-                    >
-                      {row.status}
-                    </span>
+              {loading ? (
+                <tr>
+                  <td colSpan="8" className="py-12 text-center text-stone-500">
+                    <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-stone-400" />
+                    <p className="font-semibold text-xs">Loading sales reports from database...</p>
                   </td>
                 </tr>
-              ))}
-
-              {filteredData.length === 0 && (
+              ) : paginatedData.length > 0 ? (
+                paginatedData.map((row) => (
+                  <tr key={row.id} className="hover:bg-[#FFFDF9] transition-colors">
+                    <td className="py-3 px-4 font-mono font-bold text-stone-800">{row.id}</td>
+                    <td className="py-3 px-4 text-stone-500 whitespace-nowrap">{row.date}</td>
+                    <td className="py-3 px-4 font-bold text-[#1F1713]">{row.customer}</td>
+                    <td className="py-3 px-4 text-stone-800 font-medium max-w-[200px] truncate" title={row.items}>
+                      {row.items}
+                    </td>
+                    <td className="py-3 px-4 text-stone-600">{row.category}</td>
+                    <td className="py-3 px-4 text-stone-500 font-mono text-[11px]">{row.payment}</td>
+                    <td className="py-3 px-4 font-bold font-sans text-[#6D021B] whitespace-nowrap">
+                      ₹{row.amount.toLocaleString('en-IN')}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`inline-block px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-none ${
+                          row.status === 'Delivered'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            : row.status === 'Shipped'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : row.status === 'On process'
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-red-50 text-red-800 border-red-200'
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
                   <td colSpan="8" className="py-12 text-center text-stone-500">
                     <p className="font-semibold text-sm">No orders match your selected filter.</p>
                     <p className="text-xs text-stone-400 mt-1">Try selecting a different date range or click Reset.</p>
-                    <button
-                      type="button"
-                      onClick={handleResetFilters}
-                      className="mt-3 px-3 py-1.5 bg-[#6D021B] text-white text-xs font-semibold rounded-none cursor-pointer"
-                    >
-                      Reset Filters
-                    </button>
+                    {isFiltered && (
+                      <button
+                        type="button"
+                        onClick={handleResetFilters}
+                        className="mt-3 px-3 py-1.5 bg-[#6D021B] text-white text-xs font-semibold rounded-none cursor-pointer"
+                      >
+                        Reset Filters
+                      </button>
+                    )}
                   </td>
                 </tr>
               )}
@@ -491,10 +567,13 @@ export default function AdminReports() {
         {/* ─── Pagination Controls ─── */}
         <AdminPagination
           currentPage={currentPage}
-          totalCount={filteredData.length}
-          pageSize={RECORDS_PER_PAGE}
-          onPageChange={handlePageChange}
-          itemName="orders"
+          totalItems={totalItems}
+          pageSize={pageSize}
+          onPageChange={(p) => setCurrentPage(p)}
+          onPageSizeChange={(sz) => {
+            setPageSize(sz)
+            setCurrentPage(1)
+          }}
         />
       </div>
     </div>

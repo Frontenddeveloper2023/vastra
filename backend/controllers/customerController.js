@@ -71,6 +71,10 @@ export const googleAuthCustomer = asyncHandler(async (req, res) => {
 
   let customer = await Customer.findOne({ email: normalizedEmail })
 
+  if (customer && customer.status === 'Blocked') {
+    throw new ApiError(403, 'Your account has been suspended by administration. Please contact support.')
+  }
+
   if (customer) {
     // Update existing customer profile
     if (!customer.googleId && googleId) customer.googleId = googleId
@@ -116,6 +120,10 @@ export const requestCustomerOtp = asyncHandler(async (req, res) => {
 
   // Check if customer already exists in DB
   const existingCustomer = await Customer.findOne({ email: normalizedEmail })
+
+  if (existingCustomer && existingCustomer.status === 'Blocked') {
+    throw new ApiError(403, 'Your account has been suspended by administration. Please contact support.')
+  }
 
   if (mode === 'signup' && existingCustomer) {
     throw new ApiError(
@@ -201,6 +209,10 @@ export const verifyCustomerOtp = asyncHandler(async (req, res) => {
 
   // Find or create customer
   let customer = await Customer.findOne({ email: normalizedEmail })
+
+  if (customer && customer.status === 'Blocked') {
+    throw new ApiError(403, 'Your account has been suspended by administration. Please contact support.')
+  }
 
   if (!customer) {
     customer = await Customer.create({
@@ -398,6 +410,36 @@ export const getAdminCustomers = asyncHandler(async (req, res) => {
   const customers = await Customer.find(query).sort({ createdAt: -1 }).lean()
   return res.status(200).json(
     new ApiResponse(200, customers, 'All customers retrieved')
+  )
+})
+
+/**
+ * @desc Admin: Toggle Customer Block/Unblock Status
+ * @route PATCH /api/customers/admin/:customerId/status
+ * @access Private (Admin)
+ */
+export const toggleCustomerStatus = asyncHandler(async (req, res) => {
+  const { customerId } = req.params
+  const { status } = req.body // 'Active' or 'Blocked'
+
+  if (!['Active', 'Blocked'].includes(status)) {
+    throw new ApiError(400, 'Invalid status. Status must be either "Active" or "Blocked".')
+  }
+
+  const customer = await Customer.findById(customerId)
+  if (!customer) {
+    throw new ApiError(404, 'Customer account not found.')
+  }
+
+  customer.status = status
+  await customer.save()
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { _id: customer._id, email: customer.email, status: customer.status },
+      `Customer account successfully ${status === 'Blocked' ? 'blocked' : 'unblocked'}.`
+    )
   )
 })
 

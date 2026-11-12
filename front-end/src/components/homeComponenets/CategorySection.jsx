@@ -79,61 +79,70 @@ export default function CategorySection() {
 
         {/* 2 on Mobile, 3 on Desktop */}
         <div className="w-full grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 lg:gap-6 justify-items-stretch">
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              to={category.href || '/collections'}
-              className="category-mobile-card group relative flex flex-col w-full rounded-none-none overflow-hidden bg-white border border-[#DFD1BF] hover:border-primary p-0 transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_20px_45px_-10px_rgba(109,2,27,0.18)] focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              {/* Image Frame - Edge to Edge, 100% crisp and clear */}
-              <div className="relative aspect-[3/4] lg:aspect-[4/5] w-full overflow-hidden rounded-none-none bg-[#18212C]">
-                <img
-                  src={getCmsImageUrl(category.image)}
-                  alt={category.title}
-                  loading="lazy"
-                  className="h-full w-full object-cover object-center transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-108"
-                />
+          {categories.map((category) => {
+            // Determine pure category name to filter in collections page
+            const targetCategory =
+              category.categoryName ||
+              (category.title ? category.title.replace(/\s*sarees\s*$/i, '').trim() : '') ||
+              'Banarasi'
+            const categoryUrl = `/collections?category=${encodeURIComponent(targetCategory)}`
 
-                {/* Shimmer sweep animation across the image on hover */}
-                <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none z-10" />
+            return (
+              <Link
+                key={category.id}
+                to={categoryUrl}
+                className="category-mobile-card group relative flex flex-col w-full rounded-none-none overflow-hidden bg-white border border-[#DFD1BF] hover:border-primary p-0 transition-all duration-500 hover:-translate-y-1.5 hover:shadow-[0_20px_45px_-10px_rgba(109,2,27,0.18)] focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                {/* Image Frame - Edge to Edge, 100% crisp and clear */}
+                <div className="relative aspect-[3/4] lg:aspect-[4/5] w-full overflow-hidden rounded-none-none bg-[#18212C]">
+                  <img
+                    src={getCmsImageUrl(category.image)}
+                    alt={category.title}
+                    loading="lazy"
+                    className="h-full w-full object-cover object-center transition-transform duration-700 ease-[cubic-bezier(0.25,1,0.5,1)] group-hover:scale-108"
+                  />
 
-                {/* Subtle bottom vignette to ensure text contrast */}
-                <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none z-10" />
+                  {/* Shimmer sweep animation across the image on hover */}
+                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none z-10" />
 
-                {/* Text Drawer - Always Visible on All Screens */}
-                <div className="absolute inset-x-0 bottom-0 p-2 sm:p-3 md:p-4 z-20 flex items-center justify-between gap-1 translate-y-0 opacity-100">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-serif text-[11px] sm:text-sm md:text-base lg:text-[18px] font-semibold text-[#FFF8ED] group-hover:text-secondary transition-colors duration-200 leading-tight truncate">
-                      {category.title}
-                    </h3>
-                    <p className="text-[8px] sm:text-xs text-[#E1D1C3] mt-0.5 font-normal tracking-wide truncate">
-                      {category.itemCount}
-                    </p>
-                  </div>
+                  {/* Subtle bottom vignette to ensure text contrast */}
+                  <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none z-10" />
 
-                  {/* Golden Arrow Button */}
-                  <div
-                    className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 lg:w-9 lg:h-9 rounded-none-none bg-secondary text-primary-dark flex items-center justify-center transition-all duration-300 group-hover:scale-105 shadow-md shrink-0 border border-white/20"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 transform transition-transform duration-300 group-hover:translate-x-0.5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      viewBox="0 0 24 24"
+                  {/* Text Drawer - Always Visible on All Screens */}
+                  <div className="absolute inset-x-0 bottom-0 p-2 sm:p-3 md:p-4 z-20 flex items-center justify-between gap-1 translate-y-0 opacity-100">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-serif text-[11px] sm:text-sm md:text-base lg:text-[18px] font-semibold text-[#FFF8ED] group-hover:text-secondary transition-colors duration-200 leading-tight truncate">
+                        {category.title}
+                      </h3>
+                      <p className="text-[8px] sm:text-xs text-[#E1D1C3] mt-0.5 font-normal tracking-wide truncate">
+                        {category.itemCount}
+                      </p>
+                    </div>
+
+                    {/* Golden Arrow Button */}
+                    <div
+                      className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 lg:w-9 lg:h-9 rounded-none-none bg-secondary text-primary-dark flex items-center justify-center transition-all duration-300 group-hover:scale-105 shadow-md shrink-0 border border-white/20"
+                      aria-hidden="true"
                     >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-                      />
-                    </svg>
+                      <svg
+                        className="w-2.5 h-2.5 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 transform transition-transform duration-300 group-hover:translate-x-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                        />
+                      </svg>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            )
+          })}
         </div>
       </div>
     </section>

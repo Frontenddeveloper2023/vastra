@@ -27,6 +27,21 @@ const DEFAULT_HOME_CMS = {
     productIds: [],
   },
   categoryShowcases: [],
+  shippingReturns: {
+    title: 'Shipping & Returns',
+    subtitle: 'Simple 7-point policy guide for your peace of mind.',
+    points: [],
+  },
+  termsConditions: {
+    title: 'Terms & Conditions',
+    subtitle: 'Store Agreement & Policies for our boutique customers.',
+    points: [],
+  },
+  privacyPolicy: {
+    title: 'Privacy Policy',
+    subtitle: 'Data Protection & Trust commitment at Vastraa.',
+    points: [],
+  },
 }
 
 export const HomeCMSProvider = ({ children }) => {
@@ -44,6 +59,9 @@ export const HomeCMSProvider = ({ children }) => {
           shopByCategory: data.shopByCategory || DEFAULT_HOME_CMS.shopByCategory,
           newArrivals: data.newArrivals || DEFAULT_HOME_CMS.newArrivals,
           categoryShowcases: data.categoryShowcases || [],
+          shippingReturns: data.shippingReturns || DEFAULT_HOME_CMS.shippingReturns,
+          termsConditions: data.termsConditions || DEFAULT_HOME_CMS.termsConditions,
+          privacyPolicy: data.privacyPolicy || DEFAULT_HOME_CMS.privacyPolicy,
         })
       }
     } catch (e) {
@@ -164,6 +182,12 @@ export const HomeCMSProvider = ({ children }) => {
     return await saveSection('categoryShowcases', updated)
   }
 
+  // 6. Policy Pages Handlers (Shipping & Returns, Terms & Conditions, Privacy Policy)
+  const updatePolicyPage = async (pageKey, pageData) => {
+    setCmsData((prev) => ({ ...prev, [pageKey]: pageData }))
+    return await saveSection(pageKey, pageData)
+  }
+
   return (
     <HomeCMSContext.Provider
       value={{
@@ -180,6 +204,7 @@ export const HomeCMSProvider = ({ children }) => {
         addCategoryShowcase,
         updateCategoryShowcase,
         removeCategoryShowcase,
+        updatePolicyPage,
       }}
     >
       {children}

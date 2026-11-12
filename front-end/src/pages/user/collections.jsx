@@ -181,41 +181,8 @@ export default function Collections() {
   }
 
   return (
-    <div className="w-full bg-[#FAF7F2] min-h-screen pt-[76px] sm:pt-[84px] md:pt-[136px] lg:pt-[144px] pb-16 px-3 sm:px-6 lg:px-8 font-sans">
+    <div className="w-full bg-[#FAF7F2] min-h-screen pt-[76px] sm:pt-[84px] md:pt-[136px] lg:pt-[104px] pb-16 px-3 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-7xl mx-auto">
-
-        {/* ─── Unified Top Bar: Sort by & Filters ─── */}
-        <div className="flex items-center justify-between lg:justify-end gap-3 pt-1 pb-3 sm:py-3 border-b border-[#EDE4D8]">
-          {/* Sort By Dropdown & Mobile Filter Button */}
-          <div className="flex items-center justify-between w-full lg:w-auto gap-3 shrink-0">
-            {/* Mobile Filter Toggle Button */}
-            <button
-              type="button"
-              onClick={() => setMobileFilterOpen(!mobileFilterOpen)}
-              className="lg:hidden flex items-center gap-1.5 px-3 py-2 bg-white border border-[#EDE4D8] rounded-none-xl text-xs font-semibold text-[#1F1713] shadow-2xs cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18m-14 7.5h10m-7 7.5h4" />
-              </svg>
-              <span>Filters</span>
-            </button>
-
-            {/* Sort Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#73655B]">Sort by:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-white border border-[#E3D7C7] rounded-none-xl px-3 py-2 text-xs font-medium text-[#1F1713] focus:outline-none focus:border-primary cursor-pointer shadow-2xs"
-              >
-                <option value="featured">Featured</option>
-                <option value="price-low">Price: Low to High</option>
-                <option value="price-high">Price: High to Low</option>
-                <option value="newest">Newest First</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
         {/* ─── Mobile Filter Backdrop Overlay ─── */}
         {mobileFilterOpen && (
@@ -226,31 +193,32 @@ export default function Collections() {
         )}
 
         {/* ─── Main Grid: Filter Sidebar & Product Cards In The Exact Same Row ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start pt-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start pt-2 sm:pt-4 relative">
 
-          {/* ══════════ LEFT FILTER SIDEBAR (Desktop & Mobile Drawer) ══════════ */}
+          {/* ══════════ LEFT FILTER SIDEBAR (Desktop Sticky & Mobile Drawer) ══════════ */}
           <aside
             className={`
-              fixed lg:static top-0 right-0 z-50 lg:z-auto h-full lg:h-auto
-              w-[280px] sm:w-[320px] lg:w-full bg-[#FCFAF7] lg:bg-transparent
-              p-5 sm:p-6 lg:p-0 border-l lg:border-l-0 border-[#EDE4D8]
+              fixed lg:sticky top-0 lg:top-[90px] right-0 z-50 lg:z-30 h-full lg:h-fit max-h-[calc(100vh-110px)]
+              w-[280px] sm:w-[320px] lg:w-full bg-[#FCFAF7] lg:bg-white
+              p-5 sm:p-6 lg:p-5 border-l lg:border border-[#EDE4D8] rounded-none shadow-none
               transition-transform duration-300 ease-in-out lg:translate-x-0
               ${mobileFilterOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'}
-              lg:col-span-3 shrink-0 overflow-y-auto lg:overflow-visible
+              lg:col-span-3 shrink-0 overflow-y-auto scrollbar-thin
             `}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-[#F0E8DC]">
+            {/* Header: Filters label & Reset */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-[#F0E8DC]">
               <div className="flex items-center gap-2">
-                <span className="font-serif text-sm sm:text-base font-semibold text-[#1F1713]">
+                <span className="font-serif text-sm sm:text-base font-bold text-[#1F1713]">
                   Filters
                 </span>
-                {(selectedCategory !== 'All' || maxPrice < 25000 || searchQuery) && (
+                {(selectedCategory !== 'All' || maxPrice < 25000 || searchQuery || sortBy !== 'featured') && (
                   <button
                     type="button"
                     onClick={resetFilters}
-                    className="text-[11px] text-primary hover:underline font-medium cursor-pointer"
+                    className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
                   >
-                    Reset
+                    Reset All
                   </button>
                 )}
               </div>
@@ -258,7 +226,7 @@ export default function Collections() {
               <button
                 type="button"
                 onClick={() => setMobileFilterOpen(false)}
-                className="lg:hidden p-1 text-stone-400 hover:text-primary hover:bg-[#FAF4EC] rounded-none-full transition-colors cursor-pointer"
+                className="lg:hidden p-1 text-stone-400 hover:text-primary hover:bg-[#FAF4EC] rounded-none transition-colors cursor-pointer"
                 aria-label="Close filters"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2.2" viewBox="0 0 24 24">
@@ -267,12 +235,29 @@ export default function Collections() {
               </button>
             </div>
 
-            {/* 1. Category Radio / Checkbox List */}
-            <div className="py-5 border-b border-[#F0E8DC]">
+            {/* 1. Sort By Inside Sidebar */}
+            <div className="py-4 border-b border-[#F0E8DC]">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-[#1F1713] mb-2.5">
+                Sort By
+              </h4>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="w-full bg-[#FAF7F2] border border-[#E3D7C7] rounded-none px-3 py-2 text-xs font-medium text-[#1F1713] focus:outline-none focus:border-primary cursor-pointer shadow-none"
+              >
+                <option value="featured">Featured Collection</option>
+                <option value="price-low">Price: Low to High</option>
+                <option value="price-high">Price: High to Low</option>
+                <option value="newest">Newest First</option>
+              </select>
+            </div>
+
+            {/* 2. Category Radio / Checkbox List */}
+            <div className="py-4 border-b border-[#F0E8DC]">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#1F1713] mb-3">
                 Category
               </h4>
-              <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1 scrollbar-thin">
                 {categories.map((cat) => {
                   const isChecked = selectedCategory === cat.value
                   return (
@@ -296,8 +281,8 @@ export default function Collections() {
               </div>
             </div>
 
-            {/* 2. Price Range Slider */}
-            <div className="py-5 border-b border-[#F0E8DC]">
+            {/* 3. Price Range Slider */}
+            <div className="py-4 border-b border-[#F0E8DC]">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-[#1F1713]">
                   Price Range
@@ -325,7 +310,7 @@ export default function Collections() {
               <button
                 type="button"
                 onClick={() => setMobileFilterOpen(false)}
-                className="w-full mt-3 py-2.5 bg-primary text-white rounded-none-xl text-xs font-semibold cursor-pointer shadow-xs"
+                className="w-full mt-4 py-2.5 bg-primary text-white rounded-none text-xs font-semibold cursor-pointer shadow-none active:scale-98 transition-transform"
               >
                 Apply Filters
               </button>
@@ -334,6 +319,24 @@ export default function Collections() {
 
           {/* ══════════ RIGHT PRODUCTS: In Same Top Row As Filter ══════════ */}
           <main className="lg:col-span-9">
+            {/* Top Bar on Mobile: Filters Button and Results Count */}
+            <div className="flex items-center justify-between pb-3 sm:pb-4 mb-2 lg:mb-3 border-b border-[#EDE4D8]">
+              <div className="text-xs sm:text-sm text-[#73655B]">
+                Showing <strong className="text-[#1F1713] font-bold">{filteredProducts.length}</strong> {filteredProducts.length === 1 ? 'saree' : 'sarees'}
+              </div>
+
+              {/* Mobile Filter Button */}
+              <button
+                type="button"
+                onClick={() => setMobileFilterOpen(true)}
+                className="lg:hidden flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#EDE4D8] rounded-xl text-xs font-semibold text-[#1F1713] shadow-2xs cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5 text-primary" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5h18m-14 7.5h10m-7 7.5h4" />
+                </svg>
+                <span>Filter &amp; Sort</span>
+              </button>
+            </div>
             {/* Active Filter Badges */}
             {(searchQuery || selectedCategory !== 'All') && (
               <div className="flex flex-wrap items-center gap-2 mb-4">

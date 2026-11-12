@@ -7,6 +7,7 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
+import http from 'http'
 import connectDB from './config/db.js'
 import authRoutes from './routes/authRoutes.js'
 import productRoutes from './routes/productRoutes.js'
@@ -16,13 +17,18 @@ import settingRoutes from './routes/settingRoutes.js'
 import customerRoutes from './routes/customerRoutes.js'
 import orderRoutes from './routes/orderRoutes.js'
 import { errorHandler } from './middleware/authMiddleware.js'
+import { initSocket } from './services/socketService.js'
 
 // Resolve __dirname in ES Modules
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 const app = express()
+const server = http.createServer(app)
 const PORT = process.env.PORT || 5000
+
+// Initialize WebSockets
+initSocket(server)
 
 // 1. Connect MongoDB Database
 connectDB()
@@ -100,10 +106,11 @@ app.use((req, res) => {
 app.use(errorHandler)
 
 // 9. Start Server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`🚀 [Vastraa Server Active] Running on port: ${PORT}`)
   console.log(`📡 [API Base URL] http://localhost:${PORT}/api`)
   console.log(`📁 [Uploads Directory] http://localhost:${PORT}/uploads`)
+  console.log(`⚡ [WebSocket Service Active] Socket.IO server connected`)
 })
 
 export default app

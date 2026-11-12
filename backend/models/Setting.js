@@ -79,6 +79,19 @@ const SettingSchema = new mongoose.Schema(
       },
     },
 
+    // Global Return Policy Settings
+    returnPolicy: {
+      returnWindowDays: {
+        type: Number,
+        default: 7,
+        min: 1,
+      },
+      returnPolicyText: {
+        type: String,
+        default: 'Products can be returned within the return window from the date of delivery. Proof of product condition is required.',
+      },
+    },
+
     // Admin Auth Settings
     adminPhone: {
       type: String,

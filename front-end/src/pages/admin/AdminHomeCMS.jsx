@@ -43,9 +43,10 @@ export default function AdminHomeCMS() {
     addCategoryShowcase,
     updateCategoryShowcase,
     removeCategoryShowcase,
+    updatePolicyPage,
   } = useHomeCMS()
 
-  const [activeTab, setActiveTab] = useState('banners') // 'banners' | 'moods' | 'categories' | 'arrivals' | 'showcase'
+  const [activeTab, setActiveTab] = useState('banners') // 'banners' | 'moods' | 'categories' | 'arrivals' | 'showcase' | 'policies'
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('')
 
   // Live products fetched directly from MongoDB
@@ -584,6 +585,76 @@ export default function AdminHomeCMS() {
     }
   }
 
+  // -------------------------------------------------------------
+  // TAB 5: Footer Policy Pages State & Handlers
+  // -------------------------------------------------------------
+  const [selectedPolicyKey, setSelectedPolicyKey] = useState('shippingReturns') // 'shippingReturns' | 'termsConditions' | 'privacyPolicy'
+  const [policySaving, setPolicySaving] = useState(false)
+
+  const activePolicyData = cmsData[selectedPolicyKey] || {
+    title: '',
+    subtitle: '',
+    points: [],
+  }
+
+  const handleUpdatePolicyHeader = (field, val) => {
+    const updated = {
+      ...activePolicyData,
+      [field]: val,
+    }
+    updatePolicyPage(selectedPolicyKey, updated)
+  }
+
+  const handleUpdatePolicyPoint = (idx, field, val) => {
+    const updatedPoints = [...(activePolicyData.points || [])]
+    updatedPoints[idx] = {
+      ...updatedPoints[idx],
+      [field]: val,
+    }
+    const updated = {
+      ...activePolicyData,
+      points: updatedPoints,
+    }
+    updatePolicyPage(selectedPolicyKey, updated)
+  }
+
+  const handleAddPolicyPoint = () => {
+    // Add new point at the beginning (first item) with empty defaults
+    const updatedPoints = [
+      { title: '', description: '' },
+      ...(activePolicyData.points || []),
+    ]
+    const updated = {
+      ...activePolicyData,
+      points: updatedPoints,
+    }
+    updatePolicyPage(selectedPolicyKey, updated)
+    showSaved('New point added at the top!')
+  }
+
+  const handleRemovePolicyPoint = (idx) => {
+    const updatedPoints = (activePolicyData.points || []).filter((_, i) => i !== idx)
+    const updated = {
+      ...activePolicyData,
+      points: updatedPoints,
+    }
+    updatePolicyPage(selectedPolicyKey, updated)
+    showSaved('Removed point!')
+  }
+
+  const handleSavePolicyNow = async () => {
+    try {
+      setPolicySaving(true)
+      await updatePolicyPage(selectedPolicyKey, activePolicyData)
+      notify.success('Policy page saved and updated live on user side!')
+      showSaved('Policy page updated successfully!')
+    } catch (err) {
+      notify.error('Failed to save policy')
+    } finally {
+      setPolicySaving(false)
+    }
+  }
+
   const showSaved = (msg) => {
     setSaveSuccessMsg(msg)
     setTimeout(() => setSaveSuccessMsg(''), 3000)
@@ -676,6 +747,18 @@ export default function AdminHomeCMS() {
           }`}
         >
           <span>Category Showcases </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('policies')}
+          className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            activeTab === 'policies'
+              ? 'border-[#6D021B] text-[#6D021B] bg-white font-bold'
+              : 'border-transparent text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          <span>Footer Policy Pages (3)</span>
         </button>
       </div>
 
@@ -2040,6 +2123,145 @@ export default function AdminHomeCMS() {
               </div>
             )
           })()}
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* 5. TAB: FOOTER POLICY PAGES (Shipping & Returns, Terms, Privacy) */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'policies' && (
+        <div className="space-y-6">
+          <div className="bg-white border border-[#EDE4D8] p-5 sm:p-6 shadow-2xs space-y-6 text-xs">
+            {/* Header & Sub-page Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#EDE4D8]">
+              <div>
+                <h2 className="font-normal text-lg font-bold text-stone-900">
+                  Footer Policy Pages Management
+                </h2>
+          
+              </div>
+
+              {/* Sub-tabs for the 3 pages */}
+              <div className="inline-flex items-center bg-[#FAF7F2] p-1 border border-[#EDE4D8] rounded-xl flex-wrap gap-1">
+                {[
+                  { key: 'shippingReturns', label: 'Shipping & Returns' },
+                  { key: 'termsConditions', label: 'Terms & Conditions' },
+                  { key: 'privacyPolicy', label: 'Privacy Policy' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setSelectedPolicyKey(item.key)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      selectedPolicyKey === item.key
+                        ? 'bg-[#6D021B] text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Title & Subtitle Inputs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-[#FAF7F2] p-4 rounded-xl border border-[#EDE4D8]">
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Page Title</label>
+                <input
+                  type="text"
+                  value={activePolicyData.title || ''}
+                  onChange={(e) => handleUpdatePolicyHeader('title', e.target.value)}
+                  placeholder="e.g. Shipping & Returns"
+                  className="w-full px-3 py-2 bg-white border border-[#EDE4D8] rounded-lg text-xs font-semibold focus:outline-none focus:border-[#6D021B]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1">Page Subtitle / Tagline</label>
+                <input
+                  type="text"
+                  value={activePolicyData.subtitle || ''}
+                  onChange={(e) => handleUpdatePolicyHeader('subtitle', e.target.value)}
+                  placeholder="e.g. Simple 7-point policy guide for your peace of mind."
+                  className="w-full px-3 py-2 bg-white border border-[#EDE4D8] rounded-lg text-xs focus:outline-none focus:border-[#6D021B]"
+                />
+              </div>
+            </div>
+
+            {/* Policy Points Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-stone-800 text-sm flex items-center gap-2">
+                  <span>Policy Points ({(activePolicyData.points || []).length})</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleAddPolicyPoint}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#6D021B] hover:bg-[#520114] text-white font-bold text-xs rounded-lg transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Point</span>
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {(activePolicyData.points || []).map((pt, idx) => (
+                  <div
+                    key={idx}
+                    className="p-4 bg-white border border-[#EDE4D8] rounded-xl shadow-2xs space-y-3 relative group"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-bold text-[#6D021B] text-xs">Point #{idx + 1}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePolicyPoint(idx)}
+                        className="text-stone-400 hover:text-rose-600 transition-colors p-1 cursor-pointer"
+                        title="Remove point"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 mb-1">Point Title</label>
+                      <input
+                        type="text"
+                        value={pt.title || ''}
+                        onChange={(e) => handleUpdatePolicyPoint(idx, 'title', e.target.value)}
+                        placeholder="e.g. Free Pan-India Delivery"
+                        className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EDE4D8] rounded-lg text-xs font-bold focus:outline-none focus:bg-white focus:border-[#6D021B] placeholder:text-stone-300 placeholder:font-normal"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-stone-600 mb-1">Point Description</label>
+                      <textarea
+                        rows={2}
+                        value={pt.description || ''}
+                        onChange={(e) => handleUpdatePolicyPoint(idx, 'description', e.target.value)}
+                        placeholder="Enter full policy description details..."
+                        className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EDE4D8] rounded-lg text-xs leading-relaxed focus:outline-none focus:bg-white focus:border-[#6D021B] placeholder:text-stone-300"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Save Action */}
+            <div className="pt-4 border-t border-[#EDE4D8] flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleSavePolicyNow}
+                disabled={policySaving}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                <span>{policySaving ? 'Saving Changes...' : 'Save Policy Changes Live'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

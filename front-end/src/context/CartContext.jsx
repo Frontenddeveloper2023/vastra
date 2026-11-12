@@ -29,16 +29,29 @@ export const CartProvider = ({ children }) => {
     }
   }, [cartItems])
 
-  // Selected item IDs persisted to localStorage so user selection survives refresh
+  // Selected item IDs: default to selecting ALL cart items
   const [selectedItemIds, setSelectedItemIds] = useState(() => {
     try {
       const saved = localStorage.getItem(SELECTED_STORAGE_KEY)
       if (saved) {
-        return JSON.parse(saved)
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed
+        }
       }
     } catch (e) {
       console.error('Failed to load selected cart items from storage', e)
     }
+    // Default to all items selected
+    try {
+      const savedCart = localStorage.getItem(CART_STORAGE_KEY)
+      if (savedCart) {
+        const parsedCart = JSON.parse(savedCart)
+        if (Array.isArray(parsedCart)) {
+          return parsedCart.map((c) => c.cartItemId || c.id)
+        }
+      }
+    } catch {}
     return []
   })
 
@@ -87,12 +100,16 @@ export const CartProvider = ({ children }) => {
         })
       }
 
+      const newCartItemId = `${product.id}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+      // Automatically ensure newly added item is selected by default
+      setSelectedItemIds((prev) => Array.from(new Set([...prev, newCartItemId])))
+
       return [
         ...prevItems,
         {
           id: product.id,
           variantKey,
-          cartItemId: `${product.id}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          cartItemId: newCartItemId,
           title: product.title,
           category: product.category || 'Luxury Saree',
           size,
@@ -140,11 +157,16 @@ export const CartProvider = ({ children }) => {
     setSelectedItemIds([])
   }
 
-  // Keep selected items synced: prune keys that no longer exist in cart
+  // Keep selected items synced: if no items are explicitly selected or newly loaded, default to all items selected
   useEffect(() => {
     setSelectedItemIds((prev) => {
       const validKeys = cartItems.map((c) => c.cartItemId || c.id)
-      return prev.filter((id) => validKeys.includes(id))
+      const validExisting = prev.filter((id) => validKeys.includes(id))
+      // If nothing selected but cart has items, select all by default
+      if (validExisting.length === 0 && validKeys.length > 0) {
+        return validKeys
+      }
+      return validExisting
     })
   }, [cartItems])
 

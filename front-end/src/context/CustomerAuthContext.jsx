@@ -44,6 +44,11 @@ export const CustomerAuthProvider = ({ children }) => {
         },
       })
       const result = await res.json()
+      if (res.status === 401 || res.status === 403 || result?.data?.status === 'Blocked') {
+        // Customer was blocked or token invalidated; immediately log out
+        logout()
+        return
+      }
       if (result.success && result.data) {
         setCustomer(result.data)
       }
@@ -51,6 +56,14 @@ export const CustomerAuthProvider = ({ children }) => {
       console.error('Failed to fetch customer profile:', err)
     }
   }
+
+  // Periodic verification to immediately logout if admin blocks customer
+  useEffect(() => {
+    if (!token) return
+    refreshCustomer()
+    const interval = setInterval(refreshCustomer, 15000)
+    return () => clearInterval(interval)
+  }, [token])
 
   // 1. Google Login / Signup (supports credential or userInfo)
   const loginWithGoogle = async (credentialOrUserInfo) => {

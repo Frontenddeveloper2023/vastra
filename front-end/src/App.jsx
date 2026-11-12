@@ -41,6 +41,9 @@ import Contact from './pages/user/contact'
 import About from './pages/user/about'
 import Checkout from './pages/user/checkout'
 import Login from './pages/user/login'
+import ShippingReturns from './pages/user/shippingReturns'
+import TermsConditions from './pages/user/termsConditions'
+import PrivacyPolicy from './pages/user/privacyPolicy'
 
 // Admin Pages
 import AdminLayout from './pages/admin/AdminLayout'
@@ -55,6 +58,7 @@ import AdminLogin from './pages/admin/AdminLogin'
 import AdminNotifications from './pages/admin/AdminNotifications'
 import AdminReports from './pages/admin/AdminReports'
 import AdminHomeCMS from './pages/admin/AdminHomeCMS'
+import AdminReturns from './pages/admin/AdminReturns'
 
 // Base URL provided by Vite from single .env (BASE_URL=vasraa)
 export const BASE_URL = import.meta.env.BASE_URL
@@ -66,7 +70,7 @@ function UserLayout() {
 
   return (
     <div
-      className="min-h-screen bg-[#110907] font-sans overflow-x-hidden flex flex-col justify-between"
+      className="min-h-screen bg-[#110907] font-sans flex flex-col justify-between"
       data-base-url={BASE_URL}
     >
       {/* Global Sticky Luxury Navbar (Hidden on Login page for clean distraction-free UI) */}
@@ -152,6 +156,9 @@ function App() {
                       <Route path="/addresses" element={<Addresses />} />
                       <Route path="/contact" element={<Contact />} />
                       <Route path="/about" element={<About />} />
+                      <Route path="/shipping-returns" element={<ShippingReturns />} />
+                      <Route path="/terms" element={<TermsConditions />} />
+                      <Route path="/privacy" element={<PrivacyPolicy />} />
                       <Route path="/checkout" element={<Checkout />} />
                       <Route path="/login" element={<Login />} />
                     </Route>
@@ -164,6 +171,7 @@ function App() {
                       <Route path="orders" element={<AdminOrders />} />
                       <Route path="banners" element={<Navigate to="/admin/home-cms" replace />} />
                       <Route path="customers" element={<AdminCustomers />} />
+                      <Route path="returns" element={<AdminReturns />} />
                       <Route path="home-cms" element={<AdminHomeCMS />} />
                       <Route path="notifications" element={<AdminNotifications />} />
                       <Route path="reports" element={<AdminReports />} />

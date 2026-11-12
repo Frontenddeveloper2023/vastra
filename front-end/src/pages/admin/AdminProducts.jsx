@@ -23,6 +23,7 @@ import {
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import { productService } from '../../services/productService'
 import notify from '../../utils/toast'
+import getSocket from '../../services/socket'
 
 // Curated Color Suggestions dictionary for instant auto-complete
 const PRESET_COLOR_SUGGESTIONS = [
@@ -372,6 +373,24 @@ export default function AdminProducts() {
     fetchProducts()
   }, [])
 
+  // Listen to WebSocket stock updates from orders placed by customers or other admins
+  useEffect(() => {
+    const socket = getSocket()
+    socket.emit('join:admin')
+
+    const onStockUpdate = () => {
+      fetchProducts()
+    }
+
+    socket.on('stock:updated', onStockUpdate)
+    socket.on('order:new', onStockUpdate)
+
+    return () => {
+      socket.off('stock:updated', onStockUpdate)
+      socket.off('order:new', onStockUpdate)
+    }
+  }, [])
+
   // Filtered products list
   const filtered = products.filter((p) => {
     const matchCategory = selectedCategory === 'All' || p.category === selectedCategory
@@ -428,27 +447,32 @@ export default function AdminProducts() {
   const handleOpenEdit = (p) => {
     setEditingProduct(p)
     setErrors({})
+    const primaryVariant = p.variants?.[0]
+    const currentStock = primaryVariant?.stock ?? p.stock ?? p.totalStock ?? 12
+    const currentAlert = primaryVariant?.lowStockAlert ?? p.lowStockAlert ?? 3
+    const mainImg = p.image || primaryVariant?.image || primaryVariant?.images?.[0] || ''
+    const extraImages = (Array.isArray(p.additionalImages) && p.additionalImages.length > 0)
+      ? p.additionalImages
+      : (Array.isArray(primaryVariant?.images) ? primaryVariant.images.slice(1) : [])
+
     setFormData({
       title: p.title || '',
       category: p.category || 'Banarasi',
       sku: p.sku || generateSku(p.category, p.title),
-      fabric: p.fabric || 'Pure Silk',
-      weight: p.weight?.toString() || '800',
-      design: p.design || 'Zari Woven',
-      availableColors: p.availableColors || ['Maroon', 'Gold', 'Green'],
-      color: p.color || 'Maroon',
-
-
-
+      fabric: p.fabric || primaryVariant?.material || 'Pure Silk',
+      weight: (p.weight || primaryVariant?.weight || 800).toString(),
+      design: p.design || primaryVariant?.design || 'Zari Woven',
+      availableColors: p.availableColors || (primaryVariant?.color ? [primaryVariant.color] : ['Maroon', 'Gold', 'Green']),
+      color: p.color || primaryVariant?.color || 'Maroon',
       description: p.description || 'A handcrafted luxury saree woven with master artisan precision.',
       price: p.price ? p.price.toString() : '',
       originalPrice: p.originalPrice ? p.originalPrice.toString() : (p.price ? (p.price * 1.3).toFixed(0) : ''),
-      stock: p.stock?.toString() || '12',
-      lowStockAlert: p.lowStockAlert?.toString() || '3',
+      stock: currentStock.toString(),
+      lowStockAlert: currentAlert.toString(),
       badge: p.badge || '',
       status: p.status || 'Active',
-      image: p.image || '',
-      additionalImages: p.additionalImages || [],
+      image: mainImg,
+      additionalImages: extraImages,
     })
     setIsModalOpen(true)
   }
@@ -561,9 +585,13 @@ export default function AdminProducts() {
     const finalSku = formData.sku || generateSku(formData.category, formData.title)
 
     if (editingProduct) {
+      const targetId = editingProduct._id || editingProduct.id
+      const updatedStock = Number(formData.stock || 0)
+      const updatedAlert = Number(formData.lowStockAlert || 3)
+
       setProducts((prev) =>
         prev.map((p) =>
-          p.id === editingProduct.id
+          (p._id === targetId || p.id === targetId)
             ? {
               ...p,
               title: formData.title,
@@ -574,20 +602,58 @@ export default function AdminProducts() {
               design: formData.design,
               availableColors: formData.availableColors,
               color: formData.availableColors[0] || formData.color,
-
               description: formData.description,
               price: Number(formData.price),
               originalPrice: Number(formData.originalPrice || formData.price),
-              stock: Number(formData.stock || 0),
-              lowStockAlert: Number(formData.lowStockAlert || 3),
+              stock: updatedStock,
+              totalStock: updatedStock,
+              lowStockAlert: updatedAlert,
               badge: formData.badge,
               status: finalStatus,
               image: formData.image || p.image,
               additionalImages: formData.additionalImages || [],
+              variants: p.variants && p.variants.length > 0
+                ? p.variants.map((v, i) => i === 0 ? { ...v, stock: updatedStock, lowStockAlert: updatedAlert } : v)
+                : p.variants,
             }
             : p
         )
       )
+
+      // Persist stock & product update to backend DB
+      if (editingProduct._id) {
+        const payloadVariants = editingProduct.variants && editingProduct.variants.length > 0
+          ? editingProduct.variants.map((v, i) => i === 0 ? { ...v, stock: updatedStock, lowStockAlert: updatedAlert } : v)
+          : [
+              {
+                color: formData.color || 'Standard',
+                material: formData.fabric || 'Pure Silk',
+                stock: updatedStock,
+                lowStockAlert: updatedAlert,
+                weight: Number(formData.weight) || 800,
+                image: formData.image || editingProduct.image,
+                images: [formData.image || editingProduct.image].filter(Boolean),
+              },
+            ]
+
+        productService.update(editingProduct._id, {
+          title: formData.title,
+          category: formData.category,
+          price: Number(formData.price),
+          originalPrice: Number(formData.originalPrice || formData.price),
+          description: formData.description,
+          badge: formData.badge,
+          status: finalStatus,
+          variants: payloadVariants,
+        }).then(() => {
+          notify.success('Product and stock updated successfully')
+          // Trigger immediate notification check across the entire admin panel
+          window.dispatchEvent(new CustomEvent('vastraa:stock-updated'))
+        }).catch((err) => {
+          console.error('Failed to update product in DB:', err)
+          notify.error('Could not save stock update to database')
+        })
+      }
     } else {
       const newProduct = {
         id: Date.now(),
@@ -726,9 +792,7 @@ export default function AdminProducts() {
                 ))}
               </select>
 
-              <span className="text-xs text-stone-500 whitespace-nowrap px-2">
-                Showing <strong className="text-stone-800">{filtered.length}</strong> items
-              </span>
+         
             </div>
           </div>
 
@@ -751,7 +815,7 @@ export default function AdminProducts() {
                     <tr>
                       <td colSpan="6" className="py-12 text-center text-stone-500">
                         <div className="w-7 h-7 border-2 border-[#6D021B]/20 border-t-[#6D021B] rounded-full animate-spin mx-auto mb-2" />
-                        <p className="font-semibold text-xs">Loading products from inventory...</p>
+                        <p className="font-semibold text-xs">Loading products...</p>
                       </td>
                     </tr>
                   ) : paginatedProducts.map((product) => {
@@ -809,12 +873,16 @@ export default function AdminProducts() {
 
                         {/* Stock Status */}
                         <td className="py-3 px-4">
-                          {stock <= 3 ? (
+                          {stock === 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-bold bg-stone-100 text-stone-700 border border-stone-300">
+                              Out of Stock (0)
+                            </span>
+                          ) : stock <= (product.lowStockAlert || 3) ? (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
                               Low Stock ({stock})
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-medium bg-emerald-500 text-white ">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-medium bg-emerald-500 text-white">
                               In Stock ({stock})
                             </span>
                           )}
@@ -841,7 +909,7 @@ export default function AdminProducts() {
                     <tr>
                       <td colSpan="6" className="py-12 text-center text-stone-500">
                         <AlertCircle className="w-8 h-8 text-stone-300 mx-auto mb-2" />
-                        <p className="font-semibold">No sarees found matching your query.</p>
+                        <p className="font-semibold">No sarees found.</p>
                       </td>
                     </tr>
                   )}
@@ -1156,7 +1224,7 @@ export default function AdminProducts() {
       )}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-none-2xl border border-[#EDE4D8] w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col animate-fade-in">
+          <div className="bg-white rounded-none-2xl border border-[#EDE4D8] w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-[#EDE4D8] flex items-center justify-between bg-[#FAF7F2] shrink-0">
               <div className="flex items-center gap-3">
@@ -1604,7 +1672,7 @@ export default function AdminProducts() {
                       {formData.image && (
                         <div className="relative w-16 h-20 rounded-none-lg border border-[#EDE4D8] overflow-hidden group shadow-2xs shrink-0">
                           <img
-                            src={formData.image}
+                            src={getCmsImageUrl(formData.image)}
                             alt="Main preview"
                             className="w-full h-full object-cover"
                           />
@@ -1638,7 +1706,7 @@ export default function AdminProducts() {
                     <div className="flex items-center gap-2.5 flex-wrap">
                       {formData.additionalImages.map((imgUrl, i) => (
                         <div key={i} className="relative w-16 h-20 rounded-none-lg border border-[#EDE4D8] overflow-hidden group shadow-2xs">
-                          <img src={imgUrl} alt={`angle-${i}`} className="w-full h-full object-cover" />
+                          <img src={getCmsImageUrl(imgUrl)} alt={`angle-${i}`} className="w-full h-full object-cover" />
                           <button
                             type="button"
                             onClick={() =>
@@ -1687,7 +1755,7 @@ export default function AdminProducts() {
                     <div className="relative aspect-[3/4] w-full bg-[#F5EFE6] overflow-hidden">
                       {formData.image ? (
                         <img
-                          src={formData.image}
+                          src={getCmsImageUrl(formData.image)}
                           alt={formData.title || 'Preview'}
                           className="w-full h-full object-cover object-center"
                         />
@@ -1707,27 +1775,8 @@ export default function AdminProducts() {
                         </div>
                       )}
 
-                      {/* 30. Stock Status badge */}
-                      <div className="absolute top-2 right-2 z-10">
-                        <span
-                          className={`text-[8.5px] uppercase font-bold px-1.5 py-0.5 rounded-none shadow-sm ${formData.status === 'Draft'
-                            ? 'bg-amber-100 text-amber-800'
-                            : Number(formData.stock) <= 0
-                              ? 'bg-red-600 text-white'
-                              : Number(formData.stock) <= Number(formData.lowStockAlert || 3)
-                                ? 'bg-orange-500 text-white'
-                                : 'bg-emerald-600 text-white'
-                            }`}
-                        >
-                          {formData.status === 'Draft'
-                            ? 'Draft'
-                            : Number(formData.stock) <= 0
-                              ? 'Out of Stock'
-                              : Number(formData.stock) <= Number(formData.lowStockAlert || 3)
-                                ? `Low (${formData.stock})`
-                                : `In Stock (${formData.stock})`}
-                        </span>
-                      </div>
+
+               
                     </div>
 
                     {/* Card Content Details */}

@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import { ApiError } from '../utils/apiResponse.js'
 import Admin from '../models/Admin.js'
+import Customer from '../models/Customer.js'
 
 export const verifyAdminToken = async (req, res, next) => {
   try {
@@ -88,13 +89,27 @@ export const verifyCustomerToken = async (req, res, next) => {
       process.env.JWT_SECRET || 'vastraa_super_secure_jwt_secret_key_2026_luxury_brand'
     )
 
+    // Check if customer exists and is not blocked
+    const customer = await Customer.findById(decoded.id).select('status email name')
+    if (!customer) {
+      throw new ApiError(401, 'Customer account not found or has been removed.')
+    }
+
+    if (customer.status === 'Blocked') {
+      throw new ApiError(403, 'Your account has been suspended by administration. Please contact support.')
+    }
+
     req.user = decoded
+    req.customer = customer
     next()
   } catch (error) {
+    if (error.statusCode === 403) {
+      return next(error)
+    }
     if (error.name === 'TokenExpiredError') {
       return next(new ApiError(401, 'Your session has expired. Please sign in again.'))
     }
-    return next(new ApiError(401, 'Authentication failed. Please sign in.'))
+    return next(new ApiError(401, error.message || 'Authentication failed. Please sign in.'))
   }
 }
 

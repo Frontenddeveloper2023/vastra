@@ -16,12 +16,15 @@ import {
   Package,
   Scale,
   Truck,
+  RotateCcw,
 } from 'lucide-react'
 import confetti from 'canvas-confetti'
 import { useCart } from '../../context/CartContext'
 import { useShipping } from '../../context/ShippingContext'
 import { useCustomerAuth } from '../../context/CustomerAuthContext'
+import { useSettings } from '../../context/SettingsContext'
 import { formatIndianDate } from '../../utils/dateHelper'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function Checkout() {
   const navigate = useNavigate()
@@ -38,6 +41,10 @@ export default function Checkout() {
   } = useCart()
 
   const { cityList, calculateShippingCost } = useShipping()
+  const { settings } = useSettings()
+
+  // Global Return policy days (default 7 days if not configured)
+  const globalReturnDays = settings?.returnPolicy?.returnWindowDays || 7
 
   // Items to checkout: only check out items that the user actually selected in Cart Drawer
   const checkoutItems = selectedCartItems || []
@@ -904,7 +911,7 @@ export default function Checkout() {
                 {checkoutItems.map((item) => (
                   <div key={item.cartItemId || item.id} className="pt-3 first:pt-0 flex items-start gap-3">
                     <img
-                      src={item.image}
+                      src={getCmsImageUrl(item.image)}
                       alt={item.title}
                       className="w-14 h-18 object-cover bg-[#FAF7F2] shrink-0"
                     />
@@ -930,6 +937,17 @@ export default function Checkout() {
                             {item.material || item.fabric}
                           </span>
                         )}
+                      </div>
+
+                      {/* Amazon-style Return Policy Badge for this product */}
+                      <div className="mt-1.5 flex items-center gap-1 text-[11px] text-stone-600">
+                        <RotateCcw className="w-3.5 h-3.5 text-[#6D021B] shrink-0" />
+                        <span>
+                          <strong className="text-stone-800 font-semibold">
+                            {item.returnWindowDays !== undefined ? item.returnWindowDays : globalReturnDays} days
+                          </strong>{' '}
+                          Return &amp; Refund Guarantee
+                        </span>
                       </div>
 
                       <div className="flex items-center justify-between mt-1.5">
@@ -967,9 +985,7 @@ export default function Checkout() {
                 <div className="flex justify-between items-baseline text-[11px]">
                   <div>
                     <span className="text-stone-700 font-medium">Weight Shipping:</span>
-                    <span className="text-[10px] text-stone-400 block">
-                      {shippingCalculation.weightBreakdown}
-                    </span>
+              
                   </div>
                   <span className="font-semibold text-stone-900">
                     {formatPrice(shippingCalculation.weightCost)}
@@ -980,9 +996,7 @@ export default function Checkout() {
                 <div className="flex justify-between items-baseline text-[11px]">
                   <div>
                     <span className="text-stone-700 font-medium">City Delivery ({activeCityName}):</span>
-                    <span className="text-[10px] text-stone-400 block">
-                      {shippingCalculation.cityBreakdown}
-                    </span>
+              
                   </div>
                   <span className="font-semibold text-stone-900">
                     {formatPrice(shippingCalculation.cityCost)}
@@ -1009,6 +1023,19 @@ export default function Checkout() {
                   <span className="font-sans text-xl text-[#6D021B] font-bold">
                     {formatPrice(checkoutFinalTotal)}
                   </span>
+                </div>
+
+                {/* Amazon-style Global Return Policy Banner in Checkout Summary */}
+                <div className="mt-3 p-3 bg-[#FAF7F2] border-0 text-stone-700 text-xs flex items-start gap-2.5">
+                  <RotateCcw className="w-4 h-4 text-[#6D021B] shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-stone-900 block text-[11px] uppercase tracking-wider">
+                      {globalReturnDays}-Day Free Returns
+                    </span>
+                    <p className="text-[11px] text-stone-600 mt-0.5 leading-relaxed">
+                      Eligible for free doorstep return collection within {globalReturnDays} days of delivery.
+                    </p>
+                  </div>
                 </div>
               </div>
 
