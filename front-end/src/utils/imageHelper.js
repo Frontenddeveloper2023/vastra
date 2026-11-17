@@ -1,3 +1,5 @@
+import { BACKEND_URL } from '../config/apiConfig'
+
 // Helper to resolve images (relative server uploads, direct filenames, or external URLs)
 export const getCmsImageUrl = (img, fallback = '') => {
   if (!img || typeof img !== 'string') return fallback
@@ -14,8 +16,7 @@ export const getCmsImageUrl = (img, fallback = '') => {
     return trimmed
   }
 
-  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-  const host = apiBase.replace(/\/api\/?$/, '')
+  const host = BACKEND_URL
   const cleanPath = trimmed.replace(/^\/+/, '')
 
   // If path already starts with uploads/ or vastra-product-img/, use it directly

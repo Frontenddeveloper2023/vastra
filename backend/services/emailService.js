@@ -5,6 +5,7 @@ import {
   getAdminOtpEmailTemplate,
   getOrderInvoiceEmailTemplate,
   getOrderCancellationEmailTemplate,
+  getContactInquiryEmailTemplate,
 } from '../templates/emailTemplates.js'
 
 /**
@@ -145,5 +146,18 @@ export const sendOrderCancellationEmail = async (email, details) => {
     subject: `Notice regarding your Vastraa Order #${details.orderId} [Cancellation & Refund]`,
     html,
     text: `Important update regarding your Vastraa order #${details.orderId}. Your order was cancelled by our store. Reason: ${details.reason}`,
+  })
+}
+
+/**
+ * 6. Dispatch Customer Inquiry Email directly to Admin Email
+ */
+export const sendContactInquiryEmail = async (adminEmail, inquiryData) => {
+  const html = getContactInquiryEmailTemplate(inquiryData)
+  return await sendEmail({
+    to: adminEmail,
+    subject: `📩 New Customer Inquiry: "${inquiryData.subject || 'General Inquiry'}" from ${inquiryData.name}`,
+    html,
+    text: `New customer inquiry received:\nFrom: ${inquiryData.name} (${inquiryData.email})\nPhone: ${inquiryData.phone || 'N/A'}\nSubject: ${inquiryData.subject}\n\nMessage:\n${inquiryData.message}`,
   })
 }

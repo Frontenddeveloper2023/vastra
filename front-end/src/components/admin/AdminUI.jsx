@@ -206,11 +206,7 @@ export function AdminPagination({
 
   return (
     <div className="p-4 border-t border-[#EDE4D8] flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#FAF7F2]/60 select-none">
-      <p className="text-xs text-[#73655B] font-medium">
-        Showing <span className="font-bold text-[#1F1713]">{(currentPage - 1) * pageSize + 1}</span> to{' '}
-        <span className="font-bold text-[#1F1713]">{Math.min(currentPage * pageSize, totalCount)}</span> of{' '}
-        <span className="font-bold text-[#1F1713]">{totalCount}</span> {itemName}
-      </p>
+    
 
       <div className="flex items-center gap-1.5">
         <button

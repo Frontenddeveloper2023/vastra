@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link, useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useCart } from '../context/CartContext'
 import { useCustomerAuth } from '../context/CustomerAuthContext'
+import { useSettings } from '../context/SettingsContext'
 import productService from '../services/productService'
 import { getCmsImageUrl } from '../utils/imageHelper'
 
@@ -107,6 +108,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const { totalCount, openCart } = useCart()
   const { isAuthenticated, customer } = useCustomerAuth()
+  const { settings } = useSettings()
   const navRef = useRef(null)
   const dropdownRef = useRef(null)
   const searchBoxRef = useRef(null)
@@ -245,18 +247,42 @@ export default function Navbar() {
         style={{ paddingLeft: 'clamp(12px, 3vw, 48px)', paddingRight: 'clamp(12px, 3vw, 48px)' }}
       >
         <div className="max-w-7xl mx-auto w-full h-6 sm:h-7 flex items-center justify-between gap-2">
-          {/* Left: Social Icons - hidden on small mobile to give full space to the announcement */}
-          <div className="hidden sm:flex items-center gap-2.5 shrink-0">
-            <a href="#facebook" aria-label="Facebook" className="text-white/80 hover:text-secondary transition-colors duration-150">
+          {/* Left: Social Icons - Facebook, Instagram, X/Twitter, YouTube */}
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            <a
+              href={settings?.facebook || 'https://facebook.com'}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Facebook"
+              className="text-white/85 hover:text-[#DEA53B] transition-colors duration-150"
+            >
               <FacebookIcon />
             </a>
-            <a href="#instagram" aria-label="Instagram" className="text-white/80 hover:text-secondary transition-colors duration-150">
+            <a
+              href={settings?.instagram || 'https://instagram.com'}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Instagram"
+              className="text-white/85 hover:text-[#DEA53B] transition-colors duration-150"
+            >
               <InstagramIcon />
             </a>
-            <a href="#twitter" aria-label="X Twitter" className="text-white/80 hover:text-secondary transition-colors duration-150">
+            <a
+              href={settings?.twitter || 'https://x.com'}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="X Twitter"
+              className="text-white/85 hover:text-[#DEA53B] transition-colors duration-150"
+            >
               <XTwitterIcon />
             </a>
-            <a href="#youtube" aria-label="YouTube" className="text-white/80 hover:text-secondary transition-colors duration-150">
+            <a
+              href={settings?.youtube || 'https://youtube.com'}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="YouTube"
+              className="text-white/85 hover:text-[#DEA53B] transition-colors duration-150"
+            >
               <YouTubeIcon />
             </a>
           </div>
@@ -264,12 +290,12 @@ export default function Navbar() {
           {/* Center: Promo Announcement Text - Elegant, single-line, perfectly balanced */}
           <div className="w-full sm:w-auto text-center flex-1 min-w-0">
             <p className="font-medium tracking-[0.04em] sm:tracking-[0.08em] uppercase text-[9px] xs:text-[9.5px] sm:text-[10.5px] truncate text-white/95 leading-normal">
-              Pay Online &amp; GET 10% OFF
+              {settings?.navAnnouncement || 'Pay Online & GET 10% OFF'}
             </p>
           </div>
 
-          {/* Right: Balanced spacer on tablet/desktop */}
-          <div className="hidden sm:flex items-center gap-2.5 opacity-0 pointer-events-none select-none shrink-0">
+          {/* Right: Balanced spacer on tablet/desktop to keep promo centered */}
+          <div className="hidden sm:flex items-center gap-2.5 sm:gap-3 opacity-0 pointer-events-none select-none shrink-0" aria-hidden="true">
             <FacebookIcon />
             <InstagramIcon />
             <XTwitterIcon />
@@ -307,8 +333,12 @@ export default function Navbar() {
               >
                 {/* Brand Logo Emblem Image */}
                 <img
-                  src={`${import.meta.env.BASE_URL || '/'}slides/logo.png`}
-                  alt="Vastraa Emblem"
+                  src={
+                    settings?.logoUrl
+                      ? getCmsImageUrl(settings.logoUrl)
+                      : `${import.meta.env.BASE_URL || '/'}slides/logo.png`
+                  }
+                  alt={settings?.storeName || "Vastraa Emblem"}
                   className="h-9 xs:h-10 sm:h-11 md:h-13 lg:h-14 w-auto object-contain transition-all duration-300 group-hover:scale-105 shrink-0 drop-shadow-xs"
                 />
 

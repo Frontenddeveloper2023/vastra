@@ -1,8 +1,7 @@
 import { io } from 'socket.io-client'
+import { BACKEND_URL } from '../config/apiConfig'
 
-const SOCKET_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace('/api', '')
-  : 'http://localhost:5000'
+const SOCKET_URL = BACKEND_URL
 
 let socket = null
 

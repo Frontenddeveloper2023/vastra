@@ -204,7 +204,7 @@ export default function AccountSidebar({ active }) {
       </div>
 
       {/* ─── 3. DESKTOP/TABLET SIDEBAR (Hidden on mobile < 768px, Visible on md: 768px+) ─── */}
-      <div className="hidden md:flex md:col-span-4 lg:col-span-4 bg-white rounded-none-2xl sm:rounded-none-3xl border border-[#EDE4D8] p-6 shadow-sm flex-col">
+      <div className="hidden md:flex md:col-span-4 lg:col-span-4 bg-white rounded-none-2xl sm:rounded-none-3xl border border-[#EDE4D8] p-6 shadow-sm flex-col md:sticky md:top-28 lg:top-32 self-start z-10">
         {/* Nav Menu */}
         <div className="py-2 space-y-1">
           {menuItems.map((item) => {

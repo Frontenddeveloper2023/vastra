@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import getSocket from '../services/socket'
+import { API_BASE_URL } from '../config/apiConfig'
 
 const ShippingContext = createContext(null)
 
 const STORAGE_KEY = 'vastraa_shipping_settings'
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 // Default Shipping Configuration
 const DEFAULT_SHIPPING_SETTINGS = {
@@ -45,7 +46,7 @@ export const ShippingProvider = ({ children }) => {
     return DEFAULT_SHIPPING_SETTINGS
   })
 
-  // Sync shipping settings from MongoDB on mount
+  // Sync shipping settings from MongoDB on mount & listen to real-time socket events
   useEffect(() => {
     fetch(`${API_BASE_URL}/settings`)
       .then((res) => res.json())
@@ -56,6 +57,22 @@ export const ShippingProvider = ({ children }) => {
         }
       })
       .catch((err) => console.error('Failed to load shipping from DB:', err))
+
+    // ⚡ Real-time WebSocket listener for immediate instant shipping updates (weight & city changes)
+    const socket = getSocket()
+    const onSettingsUpdated = (data) => {
+      const incomingShipping = data?.shipping || data?.settings?.shipping
+      if (incomingShipping) {
+        setShippingSettings(incomingShipping)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(incomingShipping))
+      }
+    }
+
+    socket.on('settings:updated', onSettingsUpdated)
+
+    return () => {
+      socket.off('settings:updated', onSettingsUpdated)
+    }
   }, [])
 
   // Helper to persist shipping settings to MongoDB and localStorage

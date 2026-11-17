@@ -28,7 +28,7 @@ export default function AdminDashboard() {
   const [loadingOrders, setLoadingOrders] = useState(true)
 
   useEffect(() => {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+    const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
     const token = localStorage.getItem('vastraa_admin_token')
 
     // 1. Fetch Products
@@ -38,7 +38,7 @@ export default function AdminDashboard() {
         const list = Array.isArray(data) ? data : data?.products || []
         setTotalProducts(list.length)
       })
-      .catch(() => {})
+      .catch(() => { })
 
     // 2. Fetch Low Stock Alerts
     productService
@@ -46,7 +46,7 @@ export default function AdminDashboard() {
       .then((data) => {
         setLowStockAlerts(data?.alerts || [])
       })
-      .catch(() => {})
+      .catch(() => { })
 
     // 3. Fetch Real Orders from MongoDB
     setLoadingOrders(true)
@@ -84,7 +84,7 @@ export default function AdminDashboard() {
           setTotalCustomers(result.data.length)
         }
       })
-      .catch(() => {})
+      .catch(() => { })
   }, [])
 
   const stats = [
@@ -141,7 +141,7 @@ export default function AdminDashboard() {
           <h1 className="font-normal text-2xl sm:text-3xl font-bold text-[#1F1713]">
             Store Overview
           </h1>
-         
+
         </div>
 
         <div className="flex items-center gap-2.5">
@@ -194,10 +194,7 @@ export default function AdminDashboard() {
         {/* Left (2 cols): Recent Real Customer Orders */}
         <div className="lg:col-span-2 bg-white border border-[#EDE4D8] p-5 shadow-2xs h-fit">
           <div className="flex items-center justify-between pb-4 border-b border-[#EDE4D8]">
-            <div>
-              <h2 className="font-normal text-lg font-bold text-[#1F1713]">Recent Customer Orders</h2>
-              <p className="text-xs text-[#73655B]">Live orders placed on the storefront</p>
-            </div>
+
             <Link
               to="/admin/orders"
               className="text-xs font-semibold text-[#6D021B] hover:text-[#DEA53B] flex items-center gap-1"
@@ -308,9 +305,8 @@ export default function AdminDashboard() {
                       </div>
                     </div>
 
-                    <span className={`text-xs font-bold px-2 py-0.5 shrink-0 transition-colors ${
-                      item.stock <= 0 ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'
-                    }`}>
+                    <span className={`text-xs font-bold px-2 py-0.5 shrink-0 transition-colors ${item.stock <= 0 ? 'bg-red-600 text-white' : 'bg-amber-500 text-white'
+                      }`}>
                       {item.stock <= 0 ? 'Out of Stock' : `Only ${item.stock} left`}
                     </span>
                   </Link>

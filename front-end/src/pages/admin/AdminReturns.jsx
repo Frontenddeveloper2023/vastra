@@ -31,6 +31,7 @@ export default function AdminReturns() {
   const [statusFilter, setStatusFilter] = useState('All')
 
   // Global Return Window Setting
+  const [returnEnabled, setReturnEnabled] = useState(true)
   const [returnWindowDays, setReturnWindowDays] = useState(7)
   const [returnPolicyText, setReturnPolicyText] = useState('')
   const [savingPolicy, setSavingPolicy] = useState(false)
@@ -50,7 +51,7 @@ export default function AdminReturns() {
   const [adminRemarks, setAdminRemarks] = useState('')
   const [processingAction, setProcessingAction] = useState(false)
 
-  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
   const token = localStorage.getItem('vastraa_admin_token')
 
   // Fetch Settings & Orders
@@ -61,6 +62,7 @@ export default function AdminReturns() {
       const settingsRes = await fetch(`${API_BASE}/settings`)
       const settingsData = await settingsRes.json()
       if (settingsData?.success && settingsData.data?.returnPolicy) {
+        setReturnEnabled(settingsData.data.returnPolicy.enabled !== false)
         setReturnWindowDays(settingsData.data.returnPolicy.returnWindowDays ?? 7)
         setReturnPolicyText(settingsData.data.returnPolicy.returnPolicyText || '')
       }
@@ -128,6 +130,7 @@ export default function AdminReturns() {
         },
         body: JSON.stringify({
           returnPolicy: {
+            enabled: Boolean(returnEnabled),
             returnWindowDays: Number(returnWindowDays),
             returnPolicyText,
           },
@@ -135,7 +138,11 @@ export default function AdminReturns() {
       })
       const data = await res.json()
       if (data?.success) {
-        notify.success(`Global return window set to ${returnWindowDays} days!`)
+        notify.success(
+          returnEnabled
+            ? `Returns enabled! Global return window set to ${returnWindowDays} days.`
+            : 'Returns disabled for all products!'
+        )
       } else {
         notify.error(data.message || 'Failed to update return policy')
       }
@@ -213,14 +220,14 @@ export default function AdminReturns() {
       statusFilter === 'All'
         ? true
         : statusFilter === 'Requested'
-        ? currentStatus === 'Requested' || order.status === 'Return Requested'
-        : statusFilter === 'Approved'
-        ? currentStatus === 'Approved' || order.status === 'Return Approved'
-        : statusFilter === 'Rejected'
-        ? currentStatus === 'Rejected' || order.status === 'Return Rejected'
-        : statusFilter === 'Completed'
-        ? currentStatus === 'Completed' || order.status === 'Returned'
-        : true
+          ? currentStatus === 'Requested' || order.status === 'Return Requested'
+          : statusFilter === 'Approved'
+            ? currentStatus === 'Approved' || order.status === 'Return Approved'
+            : statusFilter === 'Rejected'
+              ? currentStatus === 'Rejected' || order.status === 'Return Rejected'
+              : statusFilter === 'Completed'
+                ? currentStatus === 'Completed' || order.status === 'Returned'
+                : true
 
     return matchesSearch && matchesStatus
   })
@@ -262,7 +269,7 @@ export default function AdminReturns() {
             <RotateCcw className="w-6 h-6 text-[#6D021B]" />
             Return Management
           </h1>
-         
+
         </div>
       </div>
 
@@ -272,24 +279,52 @@ export default function AdminReturns() {
           <div className="space-y-1">
             <h2 className="text-sm font-semibold text-[#1F1713] flex items-center gap-2">
               <Calendar className="w-4 h-4 text-[#DEA53B]" />
-              Global Product Return days management
+              Global Product Return Days &amp; ON/OFF Control
             </h2>
-    
+
           </div>
 
-          <div className="flex items-center gap-3 w-full lg:w-auto">
-            <div className="flex items-center border border-stone-300 bg-stone-50 px-3 py-2">
-              <input
-                type="number"
-                min="1"
-                max="90"
-                value={returnWindowDays}
-                onChange={(e) => setReturnWindowDays(e.target.value)}
-                className="w-16 bg-transparent font-bold text-sm text-[#1F1713] focus:outline-hidden text-center"
-                required
-              />
-              <span className="text-xs font-semibold text-stone-500 ml-1">Days</span>
+          <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+            {/* Return ON / OFF Toggle Switch */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-stone-50 border border-stone-200">
+              <span className="text-xs font-semibold text-stone-600">Return Option:</span>
+              <button
+                type="button"
+                onClick={() => setReturnEnabled(!returnEnabled)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden ${returnEnabled ? 'bg-emerald-600' : 'bg-stone-300'
+                  }`}
+                role="switch"
+                aria-checked={returnEnabled}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${returnEnabled ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                />
+              </button>
+              <span
+                className={`text-xs font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-none ${returnEnabled
+                    ? 'text-emerald-700 bg-emerald-50'
+                    : 'text-stone-500 bg-stone-200'
+                  }`}
+              >
+                {returnEnabled ? 'ON' : 'OFF'}
+              </span>
             </div>
+
+            {returnEnabled && (
+              <div className="flex items-center border border-stone-300 bg-stone-50 px-3 py-2">
+                <input
+                  type="number"
+                  min="1"
+                  max="90"
+                  value={returnWindowDays}
+                  onChange={(e) => setReturnWindowDays(e.target.value)}
+                  className="w-16 bg-transparent font-bold text-sm text-[#1F1713] focus:outline-hidden text-center"
+                  required
+                />
+                <span className="text-xs font-semibold text-stone-500 ml-1">Days</span>
+              </div>
+            )}
 
             <button
               type="submit"
@@ -297,7 +332,7 @@ export default function AdminReturns() {
               className="px-4 py-2 bg-[#6D021B] hover:bg-[#580014] text-white text-xs font-semibold uppercase tracking-wider transition-colors disabled:opacity-50 flex items-center gap-1.5 shrink-0"
             >
               <Save className="w-3.5 h-3.5" />
-              {savingPolicy ? 'Saving...' : 'Save Policy'}
+              {savingPolicy ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </form>
@@ -321,11 +356,10 @@ export default function AdminReturns() {
             <button
               key={tab}
               onClick={() => setStatusFilter(tab)}
-              className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-colors shrink-0 ${
-                statusFilter === tab
+              className={`px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-colors shrink-0 ${statusFilter === tab
                   ? 'bg-[#1F1713] text-white'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-              }`}
+                }`}
             >
               {tab}
             </button>
@@ -668,13 +702,12 @@ export default function AdminReturns() {
                         type="button"
                         disabled={isLockedFinal}
                         onClick={() => setActionType('Approved')}
-                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${
-                          actionType === 'Approved'
+                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${actionType === 'Approved'
                             ? 'bg-emerald-700 text-white border-emerald-700'
                             : isLockedFinal
-                            ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
-                            : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
-                        }`}
+                              ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
+                              : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
+                          }`}
                       >
                         1. Approve Pickup
                       </button>
@@ -682,13 +715,12 @@ export default function AdminReturns() {
                         type="button"
                         disabled={isLockedFinal}
                         onClick={() => setActionType('Completed')}
-                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${
-                          actionType === 'Completed'
+                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${actionType === 'Completed'
                             ? 'bg-blue-700 text-white border-blue-700'
                             : isLockedFinal
-                            ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
-                            : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
-                        }`}
+                              ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
+                              : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
+                          }`}
                       >
                         2. Refund Done ✓
                       </button>
@@ -696,13 +728,12 @@ export default function AdminReturns() {
                         type="button"
                         disabled={isLockedFinal}
                         onClick={() => setActionType('Refund Issue')}
-                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${
-                          actionType === 'Refund Issue'
+                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${actionType === 'Refund Issue'
                             ? 'bg-amber-600 text-white border-amber-600'
                             : isLockedFinal
-                            ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
-                            : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
-                        }`}
+                              ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
+                              : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
+                          }`}
                       >
                         3. Refund Issue ⚠️
                       </button>
@@ -713,13 +744,12 @@ export default function AdminReturns() {
                           setActionType('Rejected')
                           setAdminRemarks('')
                         }}
-                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${
-                          actionType === 'Rejected'
+                        className={`py-2 px-1 text-center text-[11px] font-semibold uppercase tracking-wider border transition-colors ${actionType === 'Rejected'
                             ? 'bg-red-700 text-white border-red-700'
                             : isLockedFinal
-                            ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
-                            : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
-                        }`}
+                              ? 'bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed'
+                              : 'bg-stone-50 text-stone-700 border-stone-300 hover:bg-stone-100 cursor-pointer'
+                          }`}
                       >
                         4. Reject Return ✕
                       </button>
@@ -864,15 +894,14 @@ export default function AdminReturns() {
                       <button
                         type="submit"
                         disabled={processingAction}
-                        className={`w-full sm:w-auto px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white transition-colors disabled:opacity-50 text-center cursor-pointer ${
-                          actionType === 'Approved'
+                        className={`w-full sm:w-auto px-5 py-2 text-xs font-semibold uppercase tracking-wider text-white transition-colors disabled:opacity-50 text-center cursor-pointer ${actionType === 'Approved'
                             ? 'bg-[#6D021B] hover:bg-[#580014]'
                             : actionType === 'Completed'
-                            ? 'bg-blue-700 hover:bg-blue-800'
-                            : actionType === 'Refund Issue'
-                            ? 'bg-amber-600 hover:bg-amber-700'
-                            : 'bg-red-700 hover:bg-red-800'
-                        }`}
+                              ? 'bg-blue-700 hover:bg-blue-800'
+                              : actionType === 'Refund Issue'
+                                ? 'bg-amber-600 hover:bg-amber-700'
+                                : 'bg-red-700 hover:bg-red-800'
+                          }`}
                       >
                         {processingAction ? 'Processing...' : `Confirm ${actionType}`}
                       </button>

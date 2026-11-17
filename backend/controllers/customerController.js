@@ -443,4 +443,24 @@ export const toggleCustomerStatus = asyncHandler(async (req, res) => {
   )
 })
 
+/**
+ * @desc Admin: Delete Customer Account
+ * @route DELETE /api/customers/admin/:customerId
+ * @access Private (Admin)
+ */
+export const deleteCustomer = asyncHandler(async (req, res) => {
+  const { customerId } = req.params
+
+  const customer = await Customer.findById(customerId)
+  if (!customer) {
+    throw new ApiError(404, 'Customer account not found.')
+  }
+
+  await Customer.findByIdAndDelete(customerId)
+
+  return res.status(200).json(
+    new ApiResponse(200, { _id: customerId }, 'Customer account deleted successfully.')
+  )
+})
+
 

@@ -8,6 +8,11 @@ const SettingSchema = new mongoose.Schema(
       default: 'Vastraa - The House of Sarees',
       trim: true,
     },
+    logoUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     contactEmail: {
       type: String,
       default: 'vastraa@gmail.com',
@@ -51,6 +56,20 @@ const SettingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    // Header Announcement / Promo Bar Text
+    navAnnouncement: {
+      type: String,
+      default: 'Pay Online & GET 10% OFF',
+      trim: true,
+    },
+
+    // WhatsApp Support Settings
+    whatsappMessage: {
+      type: String,
+      default: 'Hello Vastraa, I am browsing your saree collection and would like to know more details!',
+      trim: true,
+    },
+
     // Shipping & Delivery general info
     estimatedDays: {
       type: String,
@@ -81,6 +100,10 @@ const SettingSchema = new mongoose.Schema(
 
     // Global Return Policy Settings
     returnPolicy: {
+      enabled: {
+        type: Boolean,
+        default: true,
+      },
       returnWindowDays: {
         type: Number,
         default: 7,
@@ -90,6 +113,32 @@ const SettingSchema = new mongoose.Schema(
         type: String,
         default: 'Products can be returned within the return window from the date of delivery. Proof of product condition is required.',
       },
+    },
+
+    // Global GST Settings
+    gst: {
+      enabled: {
+        type: Boolean,
+        default: false,
+      },
+      gstNumber: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      percentage: {
+        type: Number,
+        default: 5,
+        min: 0,
+        max: 100,
+      },
+    },
+
+    // Invoice Settings (Signature)
+    signatureUrl: {
+      type: String,
+      default: '',
+      trim: true,
     },
 
     // Admin Auth Settings

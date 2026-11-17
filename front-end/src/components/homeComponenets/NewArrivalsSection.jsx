@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
 import productService from '../../services/productService'
 import { getCmsImageUrl } from '../../utils/imageHelper'
+import { getSocket } from '../../services/socket'
 
 export default function NewArrivalsSection() {
   const { cmsData } = useHomeCMS()
@@ -12,15 +13,12 @@ export default function NewArrivalsSection() {
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let isMounted = true
-    setLoading(true)
+  const fetchArrivals = (showLoader = false) => {
+    if (showLoader) setLoading(true)
 
-    // Load active products catalog (large limit so all selected IDs are found)
     productService
-      .getAll({ limit: 200, status: 'Active' })
+      .getAll({ limit: 200 })
       .then((data) => {
-        if (!isMounted) return
         const catalog = Array.isArray(data) ? data : data?.products || []
 
         // Map productIds to matching catalog items
@@ -39,11 +37,37 @@ export default function NewArrivalsSection() {
         console.error('Error fetching new arrivals products:', err)
       })
       .finally(() => {
-        if (isMounted) setLoading(false)
+        if (showLoader) setLoading(false)
       })
+  }
+
+  // Network online/offline event listeners
+  useEffect(() => {
+    const handleOnline = () => {
+      fetchArrivals(true)
+    }
+
+    window.addEventListener('online', handleOnline)
 
     return () => {
-      isMounted = false
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchArrivals(true)
+
+    const socket = getSocket()
+    const handleStockUpdate = () => {
+      fetchArrivals(false)
+    }
+
+    socket.on('stock:updated', handleStockUpdate)
+    socket.on('order:new', handleStockUpdate)
+
+    return () => {
+      socket.off('stock:updated', handleStockUpdate)
+      socket.off('order:new', handleStockUpdate)
     }
   }, [JSON.stringify(productIds)])
 
@@ -111,92 +135,141 @@ export default function NewArrivalsSection() {
           </Link>
         </div>
 
-        {/* 2 in a Row on Mobile, 4 in a Row on Desktop */}
-        <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6 justify-items-stretch">
-          {products.map((product) => {
-            const productUrl = `/product/${product._id || product.id}`
-            const productImg = product.image || product.variants?.[0]?.images?.[0] || product.variants?.[0]?.image || ''
-
-            return (
+        {/* Loading State: Flipkart / Amazon Style Shimmer Skeleton */}
+        {loading ? (
+          <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
+            {[1, 2, 3, 4].map((i) => (
               <div
-                key={product._id || product.id}
-                className="group relative flex flex-col bg-white border border-[#E8DDCE] rounded-none-none p-0 overflow-hidden transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_40px_-10px_rgba(109,2,27,0.15)] hover:border-primary"
+                key={i}
+                className="relative flex flex-col bg-white border border-[#E8DDCE] overflow-hidden animate-pulse shadow-xs"
               >
-                {/* ─── FULL CARD IMAGE CONTAINER ─── */}
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-none-none bg-[#F5EFE6]">
-                  {/* Subtle 'NEW' Badge */}
-                  <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
-                    <span className="bg-primary text-white text-[9.5px] tracking-[0.16em] uppercase font-bold px-2 py-0.5 shadow-sm border border-secondary/40">
-                      NEW
-                    </span>
-                  </div>
-
-                  <Link to={productUrl} className="block w-full h-full">
-                    <img
-                      src={getCmsImageUrl(productImg)}
-                      alt={product.title}
-                      loading="lazy"
-                      className="h-full w-full object-cover object-center transition-all duration-700 ease-out group-hover:scale-108"
-                    />
-                  </Link>
-
-                  {/* Shimmer light sweep across image on hover */}
-                  <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none z-10" />
-
-                  {/* Bottom Vignette Gradient */}
-                  <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none z-10" />
-
-                  {/* ─── DEFAULT VIEW: "VIEW" Button sitting over bottom of image ─── */}
-                  <div className="absolute bottom-2.5 sm:bottom-3 inset-x-2 sm:inset-x-4 z-20 transition-all duration-300 transform group-hover:opacity-0 group-hover:pointer-events-none group-hover:translate-y-2">
-                    <Link
-                      to={productUrl}
-                      className="w-full py-2 sm:py-2.5 md:py-3 px-2 sm:px-3 rounded-none-none text-[11px] sm:text-xs md:text-[13px] font-bold tracking-[0.05em] sm:tracking-[0.08em] uppercase transition-all duration-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl border bg-primary text-white border-secondary/50 hover:bg-secondary hover:text-primary-dark"
-                    >
-                      <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-                      </svg>
-                      <span className="truncate">View</span>
-                    </Link>
-                  </div>
-
-                  {/* ─── HOVER REVEAL: Saree Title & Price Description Glides Up over Image ─── */}
-                  <div className="absolute inset-x-0 bottom-0 p-2.5 sm:p-3.5 md:p-4 z-20 flex flex-col justify-end bg-gradient-to-t from-[#140B0D] via-[#1A0F12]/95 to-transparent transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
-                    <Link to={productUrl} className="block">
-                      <h3 className="font-serif text-xs sm:text-sm md:text-base lg:text-[17px] font-semibold text-[#FFF8ED] hover:text-secondary transition-colors duration-200 truncate leading-snug">
-                        {product.title}
-                      </h3>
-                    </Link>
-
-                    <div className="mt-1 sm:mt-1.5 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
-                      <span className="text-xs sm:text-sm md:text-base lg:text-[17px] font-bold text-secondary">
-                        ₹{Number(product.price || 0).toLocaleString('en-IN')}
-                      </span>
-                      {product.originalPrice && Number(product.originalPrice) > Number(product.price) && (
-                        <span className="text-[10px] sm:text-xs text-[#A89487] line-through font-normal">
-                          ₹{Number(product.originalPrice).toLocaleString('en-IN')}
-                        </span>
-                      )}
-                      {product.originalPrice && Number(product.originalPrice) > Number(product.price) && (
-                        <span className="text-[9px] sm:text-[10px] text-emerald-400 font-semibold tracking-tight">
-                          Save {Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)}%
-                        </span>
-                      )}
-                    </div>
-
-                    {/* View link inside the hover drawer */}
-                    <Link
-                      to={productUrl}
-                      className="mt-2 sm:mt-2.5 w-full py-1.5 sm:py-2 text-[10px] sm:text-[11px] md:text-xs font-bold uppercase tracking-wider text-primary bg-secondary hover:bg-white transition-colors cursor-pointer text-center block"
-                    >
-                      View →
-                    </Link>
-                  </div>
+                {/* Product Image Skeleton with Shimmer Sweep */}
+                <div className="relative aspect-[3/4] w-full bg-stone-200 overflow-hidden">
+                  <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.6s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+                  {/* Fake top badge skeleton */}
+                  <div className="absolute top-2.5 left-2.5 w-12 h-4 bg-stone-300 rounded-xs" />
+                  {/* Fake bottom action bar */}
+                  <div className="absolute bottom-2.5 inset-x-2.5 h-8 bg-stone-300 rounded-xs" />
                 </div>
               </div>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="w-full bg-white border border-[#E8DDCE] rounded-xl p-10 text-center text-stone-500 text-xs sm:text-sm">
+            No new arrivals found at the moment.
+          </div>
+        ) : (
+          /* 2 in a Row on Mobile, 4 in a Row on Desktop */
+          <div className="w-full grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 lg:gap-6 justify-items-stretch">
+            {products.map((product) => {
+              const productUrl = `/product/${product._id || product.id}`
+              const productImg = product.image || product.variants?.[0]?.images?.[0] || product.variants?.[0]?.image || ''
+              const computedStock = product.totalStock !== undefined
+                ? Number(product.totalStock)
+                : (product.variants?.reduce((sum, v) => sum + (Number(v.stock) || 0), 0) ?? Number(product.stock || 0))
+              const isOutOfStock = product.status === 'Out of Stock' || computedStock <= 0
+
+              return (
+                <div
+                  key={product._id || product.id}
+                  className="group relative flex flex-col bg-white border border-[#E8DDCE] rounded-none-none p-0 overflow-hidden transition-all duration-500 hover:-translate-y-1 hover:shadow-[0_20px_40px_-10px_rgba(109,2,27,0.15)] hover:border-primary"
+                >
+                  {/* ─── FULL CARD IMAGE CONTAINER ─── */}
+                  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-none-none bg-[#F5EFE6]">
+                    {/* Out of Stock or NEW Badge */}
+                    {isOutOfStock ? (
+                      <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
+                        <span className="bg-red-700 text-white text-[9.5px] tracking-[0.16em] uppercase font-bold px-2 py-0.5 shadow-sm border border-red-800">
+                          OUT OF STOCK
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-2.5 left-2.5 z-20 pointer-events-none">
+                        <span className="bg-primary text-white text-[9.5px] tracking-[0.16em] uppercase font-bold px-2 py-0.5 shadow-sm border border-secondary/40">
+                          NEW
+                        </span>
+                      </div>
+                    )}
+
+                    <Link to={productUrl} className="block w-full h-full">
+                      <img
+                        src={getCmsImageUrl(productImg)}
+                        alt={product.title}
+                        loading="lazy"
+                        className={`h-full w-full object-cover object-center transition-all duration-700 ease-out group-hover:scale-108 ${
+                          isOutOfStock ? 'grayscale opacity-75' : ''
+                        }`}
+                      />
+                    </Link>
+
+                    {/* Shimmer light sweep across image on hover */}
+                    <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none z-10" />
+
+                    {/* Bottom Vignette Gradient */}
+                    <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/85 via-black/40 to-transparent pointer-events-none z-10" />
+
+                    {/* ─── DEFAULT VIEW: "VIEW" Button sitting over bottom of image ─── */}
+                    <div className="absolute bottom-2.5 sm:bottom-3 inset-x-2 sm:inset-x-4 z-20 transition-all duration-300 transform group-hover:opacity-0 group-hover:pointer-events-none group-hover:translate-y-2">
+                      <Link
+                        to={productUrl}
+                        className={`w-full py-2 sm:py-2.5 md:py-3 px-2 sm:px-3 rounded-none-none text-[11px] sm:text-xs md:text-[13px] font-bold tracking-[0.05em] sm:tracking-[0.08em] uppercase transition-all duration-200 flex items-center justify-center gap-1.5 sm:gap-2 shadow-xl border ${
+                          isOutOfStock
+                            ? 'bg-stone-800 text-stone-300 border-stone-600'
+                            : 'bg-primary text-white border-secondary/50 hover:bg-secondary hover:text-primary-dark'
+                        }`}
+                      >
+                        {isOutOfStock ? (
+                          <span>Out of Stock • View</span>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                            <span className="truncate">View</span>
+                          </>
+                        )}
+                      </Link>
+                    </div>
+
+                    {/* ─── HOVER REVEAL: Saree Title & Price Description Glides Up over Image ─── */}
+                    <div className="absolute inset-x-0 bottom-0 p-2.5 sm:p-3.5 md:p-4 z-20 flex flex-col justify-end bg-gradient-to-t from-[#140B0D] via-[#1A0F12]/95 to-transparent transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] transform translate-y-full opacity-0 group-hover:translate-y-0 group-hover:opacity-100">
+                      <Link to={productUrl} className="block">
+                        <h3 className="font-serif text-xs sm:text-sm md:text-base lg:text-[17px] font-semibold text-[#FFF8ED] hover:text-secondary transition-colors duration-200 truncate leading-snug">
+                          {product.title}
+                        </h3>
+                      </Link>
+
+                      <div className="mt-1 sm:mt-1.5 flex items-baseline gap-1.5 sm:gap-2 flex-wrap">
+                        <span className="text-xs sm:text-sm md:text-base lg:text-[17px] font-bold text-secondary">
+                          ₹{Number(product.price || 0).toLocaleString('en-IN')}
+                        </span>
+                        {product.originalPrice && Number(product.originalPrice) > Number(product.price) && (
+                          <span className="text-[10px] sm:text-xs text-[#A89487] line-through font-normal">
+                            ₹{Number(product.originalPrice).toLocaleString('en-IN')}
+                          </span>
+                        )}
+                        {product.originalPrice && Number(product.originalPrice) > Number(product.price) && (
+                          <span className="text-[9px] sm:text-[10px] text-emerald-400 font-semibold tracking-tight">
+                            Save {Math.round(((Number(product.originalPrice) - Number(product.price)) / Number(product.originalPrice)) * 100)}%
+                          </span>
+                        )}
+                      </div>
+
+                      {/* View link inside the hover drawer */}
+                      <Link
+                        to={productUrl}
+                        className="mt-2 sm:mt-2.5 w-full py-1.5 sm:py-2 text-[10px] sm:text-[11px] md:text-xs font-bold uppercase tracking-wider text-primary bg-secondary hover:bg-white transition-colors cursor-pointer text-center block"
+                      >
+                        View →
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </section>
   )

@@ -16,6 +16,7 @@ import homeCmsRoutes from './routes/homeCmsRoutes.js'
 import settingRoutes from './routes/settingRoutes.js'
 import customerRoutes from './routes/customerRoutes.js'
 import orderRoutes from './routes/orderRoutes.js'
+import contactRoutes from './routes/contactRoutes.js'
 import { errorHandler } from './middleware/authMiddleware.js'
 import { initSocket } from './services/socketService.js'
 
@@ -50,7 +51,7 @@ app.use(
       'http://localhost:5173',
       'http://localhost:5174',
       'http://localhost:4173',
-      process.env.CLIENT_URL,
+      process.env.VITE_FRONTEND_URL,
     ].filter(Boolean),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -63,11 +64,31 @@ app.use(express.json({ limit: '15mb' }))
 app.use(express.urlencoded({ extended: true, limit: '15mb' }))
 app.use(cookieParser())
 
+// Extract base subpath from BACKEND_URL (e.g. '/vastraa-backend' if BACKEND_URL is 'https://webscape.co.in/vastraa-backend')
+const getBaseSubpath = () => {
+  try {
+    const raw = process.env.BACKEND_URL
+    if (!raw) return ''
+    const pathname = new URL(raw).pathname.replace(/\/+$/, '')
+    return pathname === '/' ? '' : pathname
+  } catch {
+    return ''
+  }
+}
+const subpath = getBaseSubpath()
+
 // 5. Static File Serving (Uploads Folder & Product Images Folder)
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')))
 app.use('/vastra-product-img', express.static(path.join(__dirname, 'public/vastra-product-img')))
 // Fallback: If any direct uploads/products URL is requested, also check vastra-product-img
 app.use('/uploads/products', express.static(path.join(__dirname, 'public/vastra-product-img')))
+
+// Support subpath for static files if deployed under a subpath like /vastraa-backend
+if (subpath) {
+  app.use(`${subpath}/uploads`, express.static(path.join(__dirname, 'public/uploads')))
+  app.use(`${subpath}/uploads/products`, express.static(path.join(__dirname, 'public/vastra-product-img')))
+  app.use(`${subpath}/vastra-product-img`, express.static(path.join(__dirname, 'public/vastra-product-img')))
+}
 
 // 6. Centralized API Router Structure (Modular Routing)
 const apiRouter = express.Router()
@@ -80,6 +101,7 @@ apiRouter.use('/home-cms', homeCmsRoutes)
 apiRouter.use('/settings', settingRoutes)
 apiRouter.use('/customers', customerRoutes)
 apiRouter.use('/orders', orderRoutes)
+apiRouter.use('/contact', contactRoutes)
 
 // API Health / Test Route
 apiRouter.get('/test', (req, res) => {
@@ -90,8 +112,9 @@ apiRouter.get('/test', (req, res) => {
   })
 })
 
-// Mount Centralized Router under /api
-app.use('/api', apiRouter)
+// Mount Centralized Router under /api (and under subpath/api when deployed on live domain)
+const mountPath = subpath ? `${subpath}/api` : '/api'
+app.use(mountPath, apiRouter)
 
 // 7. Route Not Found (404) Handler
 app.use((req, res) => {

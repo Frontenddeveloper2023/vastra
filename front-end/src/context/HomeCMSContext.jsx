@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import homeCmsService from '../services/homeCmsService'
+import { getSocket } from '../services/socket'
 
 const HomeCMSContext = createContext(null)
 
@@ -42,6 +43,41 @@ const DEFAULT_HOME_CMS = {
     subtitle: 'Data Protection & Trust commitment at Vastraa.',
     points: [],
   },
+  aboutUs: {
+    heroTitle: 'Weaving Timeless Elegance & Cultural Heritage',
+    paragraph1:
+      'Founded on an enduring reverence for India’s rich handloom traditions, Vastraa is a sanctuary of heirloom textiles. From the sacred ghats of Varanasi to the temple town looms of Kanchipuram, every saree in our curation is an ode to patience, dexterity, and royal poise.',
+    paragraph2:
+      'We believe that a saree is more than six yards of fabric—it is living history, woven rhythmically by generational master artisans who breathe soul into every warp and weft. By uniting age-old motifs with contemporary drape styling, we craft pieces destined to become treasured family heirlooms.',
+    portraitImage: '',
+    visionTitle: 'Our Vision',
+    visionText:
+      'To become the world’s most trusted ambassador of Indian textile art—bridging historic handloom clusters with modern haute couture, while safeguarding the priceless heritage of traditional master weavers for future generations.',
+    missionTitle: 'Our Mission',
+    missionText:
+      'To deliver authentic, heirloom-quality sarees crafted from 100% certified pure silks through transparent artisan patronage, fair-trade pricing, and bespoke care that celebrates every milestone in a woman’s life.',
+    whyChooseTitle: 'Why Choose Vastraa',
+    whyChooseItems: [
+      {
+        id: 'feat-1',
+        title: 'Silk Mark Certified Purity',
+        description:
+          'Every saree carries authentic purity accreditation, guaranteeing 100% natural katan, mulberry, and tussar silks without synthetic blends.',
+      },
+      {
+        id: 'feat-2',
+        title: 'Generational Master Weavers',
+        description:
+          'Hand-loomed in authentic textile capitals—Banaras, Kanchipuram, Chanderi, and Paithan—preserving techniques passed down through centuries.',
+      },
+      {
+        id: 'feat-3',
+        title: 'Real Zari & Intricate Motifs',
+        description:
+          'Embellished with pure zari, heritage kadwa bootas, traditional meenakari, and timeless temple borders that endure for generations.',
+      },
+    ],
+  },
 }
 
 export const HomeCMSProvider = ({ children }) => {
@@ -62,6 +98,7 @@ export const HomeCMSProvider = ({ children }) => {
           shippingReturns: data.shippingReturns || DEFAULT_HOME_CMS.shippingReturns,
           termsConditions: data.termsConditions || DEFAULT_HOME_CMS.termsConditions,
           privacyPolicy: data.privacyPolicy || DEFAULT_HOME_CMS.privacyPolicy,
+          aboutUs: data.aboutUs || DEFAULT_HOME_CMS.aboutUs,
         })
       }
     } catch (e) {
@@ -73,6 +110,22 @@ export const HomeCMSProvider = ({ children }) => {
 
   useEffect(() => {
     refreshCMS()
+
+    const socket = getSocket()
+    const handleCmsUpdated = (data) => {
+      const incoming = data?.cms
+      if (incoming) {
+        setCmsData((prev) => ({
+          ...prev,
+          ...incoming,
+        }))
+      }
+    }
+
+    socket.on('cms:updated', handleCmsUpdated)
+    return () => {
+      socket.off('cms:updated', handleCmsUpdated)
+    }
   }, [])
 
   // Update whole or partial section on Backend & local state
@@ -182,10 +235,16 @@ export const HomeCMSProvider = ({ children }) => {
     return await saveSection('categoryShowcases', updated)
   }
 
-  // 6. Policy Pages Handlers (Shipping & Returns, Terms & Conditions, Privacy Policy)
+  // 6. Policy Pages Handlers (Shipping & Returns, Terms & Conditions, Privacy Policy, About Us)
   const updatePolicyPage = async (pageKey, pageData) => {
     setCmsData((prev) => ({ ...prev, [pageKey]: pageData }))
     return await saveSection(pageKey, pageData)
+  }
+
+  // 7. About Us Handler
+  const updateAboutUs = async (aboutData) => {
+    setCmsData((prev) => ({ ...prev, aboutUs: aboutData }))
+    return await saveSection('aboutUs', aboutData)
   }
 
   return (
@@ -205,6 +264,7 @@ export const HomeCMSProvider = ({ children }) => {
         updateCategoryShowcase,
         removeCategoryShowcase,
         updatePolicyPage,
+        updateAboutUs,
       }}
     >
       {children}

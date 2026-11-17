@@ -21,8 +21,10 @@ import {
   IndianRupee,
 } from 'lucide-react'
 import { useCustomerAuth } from '../../context/CustomerAuthContext'
+import { useSettings } from '../../context/SettingsContext'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import { formatIndianDate, formatIndianDateTime } from '../../utils/dateHelper'
+import { downloadInvoicePdfDirect } from '../../utils/invoiceGenerator'
 import notify from '../../utils/toast'
 import getSocket from '../../services/socket'
 
@@ -30,6 +32,7 @@ export default function OrderDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { isAuthenticated, token } = useCustomerAuth()
+  const { settings } = useSettings()
   const [order, setOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
@@ -37,8 +40,9 @@ export default function OrderDetails() {
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
 
-  // Global Return Window Setting
-  const [globalReturnDays, setGlobalReturnDays] = useState(7)
+  // Load Settings: returns toggle and return window days from settings context & API
+  const isReturnsEnabled = settings?.returnPolicy?.enabled !== false
+  const globalReturnDays = Number(settings?.returnPolicy?.returnWindowDays) || 7
 
   // Return Flow States
   const [showReturnModal, setShowReturnModal] = useState(false)
@@ -60,27 +64,12 @@ export default function OrderDetails() {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }, [id])
 
-  // Fetch Global Store Return Policy Setting
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-        const res = await fetch(`${API_BASE}/settings`)
-        const data = await res.json()
-        if (data?.success && data.data?.returnPolicy?.returnWindowDays) {
-          setGlobalReturnDays(Number(data.data.returnPolicy.returnWindowDays))
-        }
-      } catch (e) {
-        console.error('Failed to load global return setting:', e)
-      }
-    }
-    fetchSettings()
-  }, [])
+
 
   // Fetch real order by ID from MongoDB
   const fetchOrderDetails = () => {
     if (!token || !id) return
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+    const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
     fetch(`${API_BASE}/orders/${id}`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -139,7 +128,7 @@ export default function OrderDetails() {
 
     setUploadingImage(true)
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const uploadedUrls = []
 
       for (const file of files) {
@@ -184,7 +173,7 @@ export default function OrderDetails() {
 
     try {
       setCancelling(true)
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const res = await fetch(`${API_BASE}/orders/${order.orderId || order._id}/cancel`, {
         method: 'POST',
         headers: {
@@ -224,7 +213,7 @@ export default function OrderDetails() {
 
     try {
       setReturning(true)
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const res = await fetch(`${API_BASE}/orders/${order.orderId || order._id}/return`, {
         method: 'POST',
         headers: {
@@ -243,6 +232,9 @@ export default function OrderDetails() {
         notify.success('Your return request and proof have been submitted successfully.')
         setOrder(result.data)
         setShowReturnModal(false)
+
+        // Dispatch local event so any open Admin tabs or Layout listeners refresh immediately
+        window.dispatchEvent(new CustomEvent('vastraa:order-updated', { detail: result.data }))
       } else {
         notify.error(result.message || 'Unable to submit return request.')
       }
@@ -258,9 +250,9 @@ export default function OrderDetails() {
 
   // Check if return is allowed: Must be Delivered & within global return window days
   const isDelivered = order && (order.status === 'Delivered' || Boolean(order.deliveredAt))
-  let isReturnWindowValid = false
-  let returnWindowDays = globalReturnDays || 7
+  const returnWindowDays = Number(settings?.returnPolicy?.returnWindowDays) || 7
   let daysRemaining = 0
+  let isReturnWindowValid = false
 
   if (isDelivered) {
     const deliveryTime =
@@ -270,17 +262,17 @@ export default function OrderDetails() {
       order.createdAt
 
     const daysSinceDelivery = (new Date().getTime() - new Date(deliveryTime).getTime()) / (1000 * 60 * 60 * 24)
-    returnWindowDays = Number(globalReturnDays) || 5
-
     daysRemaining = Math.max(0, Math.ceil(returnWindowDays - daysSinceDelivery))
-    isReturnWindowValid = daysSinceDelivery <= returnWindowDays
+    isReturnWindowValid = daysSinceDelivery <= returnWindowDays && daysRemaining > 0
   }
 
   // Return button is ONLY visible if:
-  // 1. Order is delivered
-  // 2. We are within the global return policy window (daysRemaining > 0)
-  // 3. Customer has not already initiated a return
+  // 1. Returns are turned ON globally by Admin
+  // 2. Order is delivered
+  // 3. We are within the global return policy window (daysRemaining > 0)
+  // 4. Customer has not already initiated a return
   const canRequestReturn =
+    isReturnsEnabled &&
     isDelivered &&
     isReturnWindowValid &&
     !order.returnDetails?.isReturnRequested &&
@@ -288,8 +280,18 @@ export default function OrderDetails() {
     order.status !== 'Return Approved' &&
     order.status !== 'Returned'
 
-  const handleDownloadInvoice = () => {
-    window.print()
+  const handleDownloadInvoice = async () => {
+    try {
+      setDownloading(true)
+      notify.info('Generating your official invoice PDF...')
+      await downloadInvoicePdfDirect(order.orderId || order._id)
+      notify.success('Invoice PDF downloaded successfully!')
+    } catch (err) {
+      console.error(err)
+      notify.error('Failed to download invoice PDF. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   const getStatusBadge = (status) => {
@@ -357,7 +359,7 @@ export default function OrderDetails() {
     <div className="w-full bg-[#FAF7F2] min-h-[calc(100vh-140px)] pt-[76px] sm:pt-[84px] md:pt-[136px] lg:pt-[144px] pb-12 sm:pb-16 px-3 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-5xl mx-auto">
         <div className="bg-white rounded-none-2xl sm:rounded-none-3xl border border-[#EDE4D8] p-4 sm:p-6 lg:p-8 shadow-xs">
-          
+
           {/* Top Header: Back Button & Order ID */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-[#F0E8DC]">
             <div className="flex items-center gap-3">
@@ -401,26 +403,38 @@ export default function OrderDetails() {
                 </button>
               )}
 
-              {/* Return Product Button: Visible ONLY within global return window date; Hidden completely after */}
-              {canRequestReturn && (
+              {/* Return Product Button: Visible ONLY within global return window date (daysRemaining > 0); Hides completely after and shows a subtle tag */}
+              {canRequestReturn ? (
                 <button
                   type="button"
                   onClick={() => setShowReturnModal(true)}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-[#6D021B] text-white bg-[#6D021B] hover:bg-[#580014] text-xs font-semibold uppercase tracking-wider transition-all cursor-pointer shadow-xs"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Return Product ({daysRemaining} days left)</span>
+                  <span>
+                    Return Product ({daysRemaining === 1 ? '1 day left - Ends today' : `${daysRemaining} days left`})
+                  </span>
                 </button>
+              ) : (
+                isReturnsEnabled &&
+                isDelivered &&
+                !order.returnDetails?.isReturnRequested &&
+                daysRemaining <= 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 text-stone-500 border border-stone-200 text-xs font-medium rounded-lg">
+                    <RotateCcw className="w-3.5 h-3.5 text-stone-400" />
+                    <span>Return policy window closed</span>
+                  </span>
+                )
               )}
 
               <button
                 type="button"
                 onClick={handleDownloadInvoice}
                 disabled={downloading}
-                className="inline-flex items-center gap-2 px-4 py-2 border border-stone-200 hover:border-primary text-xs font-semibold text-stone-700 hover:text-primary rounded-xl transition-all cursor-pointer"
+                className="inline-flex items-center gap-2 px-4 py-2 border border-stone-200 hover:border-primary text-xs font-semibold text-stone-700 hover:text-primary rounded-xl transition-all cursor-pointer disabled:opacity-60"
               >
                 <Download className="w-4 h-4" />
-                <span>{downloading ? 'Preparing...' : 'Print / Download Invoice'}</span>
+                <span>{downloading ? 'Downloading PDF...' : 'Download Invoice (PDF)'}</span>
               </button>
             </div>
           </div>
@@ -439,15 +453,14 @@ export default function OrderDetails() {
                       Product Return Information
                     </span>
                     <span
-                      className={`px-2.5 py-0.5 text-[11px] font-bold uppercase rounded-none tracking-wider ${
-                        ret.status === 'Approved' || order.status === 'Return Approved'
+                      className={`px-2.5 py-0.5 text-[11px] font-bold uppercase rounded-none tracking-wider ${ret.status === 'Approved' || order.status === 'Return Approved'
                           ? 'bg-emerald-100 text-emerald-800'
                           : ret.status === 'Rejected' || order.status === 'Return Rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : ret.status === 'Completed' || order.status === 'Returned'
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}
+                            ? 'bg-rose-100 text-rose-800'
+                            : ret.status === 'Completed' || order.status === 'Returned'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                        }`}
                     >
                       {ret.status || order.status || 'Requested'}
                     </span>
@@ -528,7 +541,7 @@ export default function OrderDetails() {
                       <p className="text-xs text-amber-900 leading-relaxed font-medium">
                         {ret.refundIssueReason || 'We encountered an issue transferring your refund to the original account (e.g. bank or UPI issue).'}
                       </p>
-                
+
                     </div>
                   </div>
                 </div>
@@ -661,6 +674,12 @@ export default function OrderDetails() {
                 <span>Shipping Fee ({order.pricing?.totalWeightGrams || 0}g)</span>
                 <span>₹{(order.pricing?.shippingFee || 0).toLocaleString('en-IN')}</span>
               </div>
+              {order.pricing?.gstAmount > 0 && (
+                <div className="flex justify-between text-stone-600">
+                  <span>GST ({order.pricing.gstPercentage || 5}%)</span>
+                  <span>₹{order.pricing.gstAmount.toLocaleString('en-IN')}</span>
+                </div>
+              )}
               {order.pricing?.discount > 0 && (
                 <div className="flex justify-between text-emerald-600 font-semibold">
                   <span>Privilege Discount</span>

@@ -10,6 +10,7 @@ import {
   deleteCustomerAddress,
   getAdminCustomers,
   toggleCustomerStatus,
+  deleteCustomer,
 } from '../controllers/customerController.js'
 import { protectCustomer, verifyAdminToken } from '../middleware/authMiddleware.js'
 
@@ -18,6 +19,7 @@ const router = express.Router()
 // ── Admin Endpoints ──
 router.get('/admin/all', verifyAdminToken, getAdminCustomers)
 router.patch('/admin/:customerId/status', verifyAdminToken, toggleCustomerStatus)
+router.delete('/admin/:customerId', verifyAdminToken, deleteCustomer)
 router.get('/', verifyAdminToken, getAdminCustomers)
 
 // ── Authentication Endpoints ──

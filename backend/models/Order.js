@@ -111,6 +111,8 @@ const OrderSchema = new mongoose.Schema(
     pricing: {
       subtotal: { type: Number, required: true, default: 0 },
       shippingFee: { type: Number, required: true, default: 0 },
+      gstAmount: { type: Number, default: 0 },
+      gstPercentage: { type: Number, default: 0 },
       totalWeightGrams: { type: Number, default: 0 },
       discount: { type: Number, default: 0 },
       finalTotal: { type: Number, required: true },

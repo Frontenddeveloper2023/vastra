@@ -12,6 +12,8 @@ import {
   Tag,
   AlertCircle,
   Image as ImageIcon,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react'
 import {
   AdminEditButton,
@@ -86,7 +88,10 @@ export default function AdminProducts() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [modalTab, setModalTab] = useState('basic') // 'basic' | 'variants'
   const [editingProduct, setEditingProduct] = useState(null)
+  const [productToDelete, setProductToDelete] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [errors, setErrors] = useState({})
 
   // Form State for Add / Edit with all comprehensive saree fields
@@ -422,24 +427,43 @@ export default function AdminProducts() {
   const handleOpenAdd = () => {
     setEditingProduct(null)
     setErrors({})
+    setModalTab('basic')
     setFormData({
       title: '',
       category: '',
       sku: '',
-      fabric: '',
+      fabric: fabricList[0] || 'Pure Silk',
       weight: '800',
-      design: '',
-      availableColors: [],
-      color: '',
+      design: designList[0] || 'Traditional',
+      availableColors: colorList.length > 0 ? [colorList[0].name] : ['Red'],
+      color: colorList[0]?.name || 'Red',
       description: '',
       price: '',
       originalPrice: '',
-      stock: '',
-      lowStockAlert: '',
+      stock: '10',
+      lowStockAlert: '2',
       badge: '',
       status: 'Active',
       image: '',
       additionalImages: [],
+      // Amazon/Flipkart Multi-Variant Structure
+      variants: [
+        {
+          id: `var-${Date.now()}-1`,
+          color: colorList[0]?.name || 'Red',
+          hex: colorList[0]?.hex || '#6D021B',
+          design: designList[0] || 'Traditional',
+          material: fabricList[0] || 'Pure Silk',
+          weight: 800,
+          price: 1999,
+          originalPrice: 2499,
+          status: 'Active',
+          stock: 10,
+          lowStockAlert: 2,
+          image: '',
+          additionalImages: [],
+        },
+      ],
     })
     setIsModalOpen(true)
   }
@@ -447,6 +471,7 @@ export default function AdminProducts() {
   const handleOpenEdit = (p) => {
     setEditingProduct(p)
     setErrors({})
+    setModalTab('basic')
     const primaryVariant = p.variants?.[0]
     const currentStock = primaryVariant?.stock ?? p.stock ?? p.totalStock ?? 12
     const currentAlert = primaryVariant?.lowStockAlert ?? p.lowStockAlert ?? 3
@@ -455,15 +480,58 @@ export default function AdminProducts() {
       ? p.additionalImages
       : (Array.isArray(primaryVariant?.images) ? primaryVariant.images.slice(1) : [])
 
+    // Prepare variants array
+    let loadedVariants = []
+    if (Array.isArray(p.variants) && p.variants.length > 0) {
+      loadedVariants = p.variants.map((v, idx) => {
+        const foundColor = colorList.find((c) => c.name.toLowerCase() === (v.color || '').toLowerCase())
+        const vMain = v.image || (Array.isArray(v.images) ? v.images[0] : '') || ''
+        const vExtras = Array.isArray(v.images) && v.images.length > 1 ? v.images.slice(1) : []
+        return {
+          id: v._id || v.id || `var-${Date.now()}-${idx}`,
+          color: v.color || colorList[0]?.name || 'Red',
+          hex: v.hex || foundColor?.hex || '#6D021B',
+          design: v.design || p.design || 'Traditional',
+          material: v.material || p.fabric || 'Pure Silk',
+          weight: v.weight || p.weight || 800,
+          price: v.price !== undefined ? v.price : (p.price || 1999),
+          originalPrice: v.originalPrice !== undefined ? v.originalPrice : (p.originalPrice || 2499),
+          status: v.status || p.status || 'Active',
+          stock: v.stock !== undefined ? v.stock : 5,
+          lowStockAlert: v.lowStockAlert !== undefined ? v.lowStockAlert : 2,
+          image: vMain,
+          additionalImages: vExtras,
+        }
+      })
+    } else {
+      loadedVariants = [
+        {
+          id: `var-${Date.now()}-1`,
+          color: p.color || colorList[0]?.name || 'Red',
+          hex: colorList[0]?.hex || '#6D021B',
+          design: p.design || 'Traditional',
+          material: p.fabric || 'Pure Silk',
+          weight: p.weight || 800,
+          price: p.price || 1999,
+          originalPrice: p.originalPrice || 2499,
+          status: p.status || 'Active',
+          stock: currentStock,
+          lowStockAlert: currentAlert,
+          image: mainImg,
+          additionalImages: extraImages,
+        },
+      ]
+    }
+
     setFormData({
       title: p.title || '',
       category: p.category || 'Banarasi',
       sku: p.sku || generateSku(p.category, p.title),
       fabric: p.fabric || primaryVariant?.material || 'Pure Silk',
       weight: (p.weight || primaryVariant?.weight || 800).toString(),
-      design: p.design || primaryVariant?.design || 'Zari Woven',
-      availableColors: p.availableColors || (primaryVariant?.color ? [primaryVariant.color] : ['Maroon', 'Gold', 'Green']),
-      color: p.color || primaryVariant?.color || 'Maroon',
+      design: p.design || primaryVariant?.design || 'Traditional',
+      availableColors: p.availableColors || loadedVariants.map((v) => v.color),
+      color: p.color || primaryVariant?.color || loadedVariants[0]?.color || 'Red',
       description: p.description || 'A handcrafted luxury saree woven with master artisan precision.',
       price: p.price ? p.price.toString() : '',
       originalPrice: p.originalPrice ? p.originalPrice.toString() : (p.price ? (p.price * 1.3).toFixed(0) : ''),
@@ -473,8 +541,125 @@ export default function AdminProducts() {
       status: p.status || 'Active',
       image: mainImg,
       additionalImages: extraImages,
+      variants: loadedVariants,
     })
     setIsModalOpen(true)
+  }
+
+  // Variant Helpers
+  const handleAddVariant = () => {
+    const nextColor = colorList[formData.variants?.length % colorList.length] || colorList[0] || { name: 'Red', hex: '#6D021B' }
+    const newVariant = {
+      id: `var-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      color: nextColor.name,
+      hex: nextColor.hex,
+      design: formData.design || designList[0] || 'Traditional',
+      material: formData.fabric || fabricList[0] || 'Pure Silk',
+      weight: Number(formData.weight) || 800,
+      price: Number(formData.variants?.[0]?.price) || Number(formData.price) || 1999,
+      originalPrice: Number(formData.variants?.[0]?.originalPrice) || Number(formData.originalPrice) || 2499,
+      status: formData.status || 'Active',
+      stock: 5,
+      lowStockAlert: 2,
+      image: '',
+      additionalImages: [],
+    }
+    setFormData((prev) => {
+      const updated = [...(prev.variants || []), newVariant]
+      return {
+        ...prev,
+        variants: updated,
+        availableColors: Array.from(new Set(updated.map((v) => v.color))),
+      }
+    })
+  }
+
+  const handleRemoveVariant = (index) => {
+    if ((formData.variants || []).length <= 1) {
+      notify.warning('Product must have at least one variant.')
+      return
+    }
+    setFormData((prev) => {
+      const updated = prev.variants.filter((_, idx) => idx !== index)
+      return {
+        ...prev,
+        variants: updated,
+        availableColors: Array.from(new Set(updated.map((v) => v.color))),
+      }
+    })
+  }
+
+  const handleUpdateVariant = (index, field, value) => {
+    setFormData((prev) => {
+      const updated = [...(prev.variants || [])]
+      if (!updated[index]) return prev
+      updated[index] = { ...updated[index], [field]: value }
+
+      // If color changed, sync its hex automatically
+      if (field === 'color') {
+        const found = colorList.find((c) => c.name.toLowerCase() === String(value).toLowerCase())
+        if (found) updated[index].hex = found.hex
+      }
+
+      const allColors = Array.from(new Set(updated.map((v) => v.color)))
+      return {
+        ...prev,
+        variants: updated,
+        availableColors: allColors,
+        color: updated[0]?.color || prev.color,
+      }
+    })
+  }
+
+  const handleVariantImageUpload = (index, e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        handleUpdateVariant(index, 'image', reader.result)
+        // If first variant and main product image is empty, set as main image
+        if (index === 0 && !formData.image) {
+          setFormData((prev) => ({ ...prev, image: reader.result }))
+        }
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleVariantAdditionalImagesUpload = (index, e) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+
+    files.forEach((file) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setFormData((prev) => {
+          const updated = [...(prev.variants || [])]
+          if (!updated[index]) return prev
+          const curExtras = Array.isArray(updated[index].additionalImages) ? updated[index].additionalImages : []
+          if (curExtras.length >= 4) return prev
+          updated[index] = {
+            ...updated[index],
+            additionalImages: [...curExtras, reader.result].slice(0, 4),
+          }
+          return { ...prev, variants: updated }
+        })
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handleRemoveVariantAdditionalImage = (variantIndex, imageIndex) => {
+    setFormData((prev) => {
+      const updated = [...(prev.variants || [])]
+      if (!updated[variantIndex]) return prev
+      const curExtras = Array.isArray(updated[variantIndex].additionalImages) ? updated[variantIndex].additionalImages : []
+      updated[variantIndex] = {
+        ...updated[variantIndex],
+        additionalImages: curExtras.filter((_, i) => i !== imageIndex),
+      }
+      return { ...prev, variants: updated }
+    })
   }
 
   const handleImageFileChange = (e) => {
@@ -526,17 +711,59 @@ export default function AdminProducts() {
     })
   }
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to remove this saree from inventory?')) {
-      try {
-        await productService.delete(id)
-        setProducts((prev) => prev.filter((p) => (p._id || p.id) !== id))
-        notify.success('Product deleted successfully')
-      } catch (err) {
-        console.error('Failed to delete product:', err)
-        notify.error('Could not delete product')
-      }
+  const handleDelete = (productOrId) => {
+    // If passed a product object, use it; otherwise find product from list
+    const product = typeof productOrId === 'object'
+      ? productOrId
+      : products.find((p) => (p._id || p.id) === productOrId)
+    setProductToDelete(product || { _id: productOrId, title: 'this saree' })
+  }
+
+  const confirmDeleteProduct = async () => {
+    if (!productToDelete) return
+    const id = productToDelete._id || productToDelete.id
+    try {
+      setIsDeleting(true)
+      await productService.delete(id)
+      setProducts((prev) => prev.filter((p) => (p._id || p.id) !== id))
+      notify.success('Product deleted successfully')
+      setProductToDelete(null)
+    } catch (err) {
+      console.error('Failed to delete product:', err)
+      notify.error('Could not delete product')
+    } finally {
+      setIsDeleting(false)
     }
+  }
+
+  const validateBasicInfo = () => {
+    const basicErrors = {}
+    if (!formData.title?.trim()) basicErrors.title = 'Saree title is required'
+    if (!formData.category?.trim()) basicErrors.category = 'Please select a category'
+    if (!formData.fabric?.trim()) basicErrors.fabric = 'Please select a fabric / material'
+    if (!formData.description?.trim()) basicErrors.description = 'Product description is required'
+    return basicErrors
+  }
+
+  const handleNextToVariants = (e) => {
+    if (e && e.preventDefault) e.preventDefault()
+    const basicErrors = validateBasicInfo()
+    if (Object.keys(basicErrors).length > 0) {
+      setErrors((prev) => ({ ...prev, ...basicErrors }))
+      const fieldOrder = ['title', 'category', 'fabric', 'description', 'price']
+      const firstInvalidField = fieldOrder.find((f) => basicErrors[f])
+      if (firstInvalidField) {
+        setTimeout(() => {
+          const el = document.getElementById(`field-${firstInvalidField}`)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            if (el.focus && typeof el.focus === 'function') el.focus()
+          }
+        }, 50)
+      }
+      return
+    }
+    setModalTab('variants')
   }
 
   const handleSave = (e, customStatus) => {
@@ -547,23 +774,45 @@ export default function AdminProducts() {
     if (!formData.title?.trim()) validationErrors.title = 'Saree title is required'
     if (!formData.category?.trim()) validationErrors.category = 'Please select a category'
     if (!formData.fabric?.trim()) validationErrors.fabric = 'Please select a fabric / material'
-    if (!formData.availableColors || formData.availableColors.length === 0) validationErrors.availableColors = 'Please select at least one available color'
     if (!formData.description?.trim()) validationErrors.description = 'Product description is required'
-    if (!formData.price || Number(formData.price) <= 0) validationErrors.price = 'Please enter a valid selling price (> 0)'
-    if (formData.stock === '' || formData.stock === null || isNaN(Number(formData.stock)) || Number(formData.stock) < 0) {
-      validationErrors.stock = 'Please enter valid stock quantity (≥ 0)'
+
+    // Check if any variant is missing required fields
+    const variants = formData.variants || []
+    if (variants.length === 0) {
+      validationErrors.variants = 'Please add at least one variant'
+    } else {
+      const hasInvalidStock = variants.some((v) => v.stock === '' || v.stock === null || isNaN(Number(v.stock)) || Number(v.stock) < 0)
+      if (hasInvalidStock) {
+        validationErrors.stock = 'All variants must have valid stock (≥ 0)'
+      }
+      const hasInvalidPrice = variants.some((v) => v.price === '' || v.price === null || isNaN(Number(v.price)) || Number(v.price) <= 0)
+      if (hasInvalidPrice) {
+        validationErrors.variantPrice = 'Each variant must have a valid selling price (> 0)'
+      }
     }
-    if (!formData.lowStockAlert || isNaN(Number(formData.lowStockAlert)) || Number(formData.lowStockAlert) < 1) {
-      validationErrors.lowStockAlert = 'Please enter a low stock threshold (≥ 1)'
-    }
-    if (!formData.image && !editingProduct?.image) {
-      validationErrors.image = 'Main product image is required'
+
+    // Calculate total stock from variants
+    const totalVariantStock = variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+    const primaryVariant = variants[0]
+    const mainImg = primaryVariant?.image || formData.image || ''
+
+    if (!mainImg && !editingProduct?.image) {
+      validationErrors.image = 'At least one variant image or main product image is required'
     }
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
-      // Order of field priority to smoothly scroll to the first invalid field
-      const fieldOrder = ['title', 'category', 'fabric', 'availableColors', 'description', 'price', 'stock', 'lowStockAlert', 'image']
+
+      // If errors are on basic fields, switch to basic tab
+      const basicErrorFields = ['title', 'category', 'fabric', 'description', 'price']
+      const hasBasicError = basicErrorFields.some((f) => validationErrors[f])
+      if (hasBasicError) {
+        setModalTab('basic')
+      } else {
+        setModalTab('variants')
+      }
+
+      const fieldOrder = ['title', 'category', 'fabric', 'description', 'price', 'stock', 'image']
       const firstInvalidField = fieldOrder.find((f) => validationErrors[f])
       if (firstInvalidField) {
         setTimeout(() => {
@@ -584,103 +833,124 @@ export default function AdminProducts() {
     const finalStatus = customStatus || formData.status || 'Active'
     const finalSku = formData.sku || generateSku(formData.category, formData.title)
 
+    // Clean payload variants: preserve main image + additional 4 images for each variant
+    const payloadVariants = (formData.variants || []).map((v) => {
+      const vMain = v.image || mainImg
+      const vExtras = Array.isArray(v.additionalImages) ? v.additionalImages.filter(Boolean) : []
+      const combinedImages = [vMain, ...vExtras].filter(Boolean)
+      const vPrice = Number(v.price) > 0 ? Number(v.price) : (Number(formData.price) || 1999)
+      const vOriginalPrice = Number(v.originalPrice) > 0 ? Number(v.originalPrice) : (Number(formData.originalPrice) || vPrice)
+      const vStatus = v.status || formData.status || 'Active'
+      return {
+        color: v.color || 'Red',
+        hex: v.hex || '#6D021B',
+        design: v.design || formData.design || 'Traditional',
+        material: v.material || formData.fabric || 'Pure Silk',
+        weight: Number(v.weight) || Number(formData.weight) || 800,
+        price: vPrice,
+        originalPrice: vOriginalPrice,
+        status: vStatus,
+        stock: Number(v.stock) >= 0 ? Number(v.stock) : 0,
+        lowStockAlert: Number(v.lowStockAlert) >= 1 ? Number(v.lowStockAlert) : 2,
+        image: vMain,
+        images: combinedImages.length > 0 ? combinedImages : [mainImg].filter(Boolean),
+      }
+    })
+
+    const primaryPrice = payloadVariants[0]?.price || Number(formData.price) || 1999
+    const primaryOriginalPrice = payloadVariants[0]?.originalPrice || Number(formData.originalPrice) || primaryPrice
+
     if (editingProduct) {
       const targetId = editingProduct._id || editingProduct.id
-      const updatedStock = Number(formData.stock || 0)
-      const updatedAlert = Number(formData.lowStockAlert || 3)
-
       setProducts((prev) =>
         prev.map((p) =>
           (p._id === targetId || p.id === targetId)
             ? {
-              ...p,
-              title: formData.title,
-              category: formData.category,
-              sku: finalSku,
-              fabric: formData.fabric,
-              weight: Number(formData.weight) || 800,
-              design: formData.design,
-              availableColors: formData.availableColors,
-              color: formData.availableColors[0] || formData.color,
-              description: formData.description,
-              price: Number(formData.price),
-              originalPrice: Number(formData.originalPrice || formData.price),
-              stock: updatedStock,
-              totalStock: updatedStock,
-              lowStockAlert: updatedAlert,
-              badge: formData.badge,
-              status: finalStatus,
-              image: formData.image || p.image,
-              additionalImages: formData.additionalImages || [],
-              variants: p.variants && p.variants.length > 0
-                ? p.variants.map((v, i) => i === 0 ? { ...v, stock: updatedStock, lowStockAlert: updatedAlert } : v)
-                : p.variants,
-            }
+                ...p,
+                title: formData.title,
+                category: formData.category,
+                sku: finalSku,
+                fabric: formData.fabric,
+                weight: Number(formData.weight) || 800,
+                design: formData.design,
+                availableColors: formData.availableColors,
+                color: formData.availableColors[0] || formData.color,
+                description: formData.description,
+                price: primaryPrice,
+                originalPrice: primaryOriginalPrice,
+                stock: totalVariantStock,
+                totalStock: totalVariantStock,
+                lowStockAlert: Number(primaryVariant?.lowStockAlert || 3),
+                badge: formData.badge,
+                status: finalStatus,
+                image: mainImg || p.image,
+                additionalImages: formData.additionalImages || [],
+                variants: payloadVariants,
+              }
             : p
         )
       )
 
       // Persist stock & product update to backend DB
       if (editingProduct._id) {
-        const payloadVariants = editingProduct.variants && editingProduct.variants.length > 0
-          ? editingProduct.variants.map((v, i) => i === 0 ? { ...v, stock: updatedStock, lowStockAlert: updatedAlert } : v)
-          : [
-              {
-                color: formData.color || 'Standard',
-                material: formData.fabric || 'Pure Silk',
-                stock: updatedStock,
-                lowStockAlert: updatedAlert,
-                weight: Number(formData.weight) || 800,
-                image: formData.image || editingProduct.image,
-                images: [formData.image || editingProduct.image].filter(Boolean),
-              },
-            ]
-
-        productService.update(editingProduct._id, {
+        productService
+          .update(editingProduct._id, {
+            title: formData.title,
+            category: formData.category,
+            price: primaryPrice,
+            originalPrice: primaryOriginalPrice,
+            description: formData.description,
+            badge: formData.badge,
+            status: finalStatus,
+            image: mainImg,
+            variants: payloadVariants,
+            totalStock: totalVariantStock,
+          })
+          .then(() => {
+            notify.success('Product and variants updated successfully')
+            window.dispatchEvent(new CustomEvent('vastraa:stock-updated'))
+          })
+          .catch((err) => {
+            console.error('Failed to update product in DB:', err)
+            notify.error('Could not save product update to database')
+          })
+      }
+    } else {
+      // Create new product via API
+      productService
+        .create({
           title: formData.title,
           category: formData.category,
-          price: Number(formData.price),
-          originalPrice: Number(formData.originalPrice || formData.price),
+          price: primaryPrice,
+          originalPrice: primaryOriginalPrice,
           description: formData.description,
           badge: formData.badge,
           status: finalStatus,
+          image: mainImg,
           variants: payloadVariants,
-        }).then(() => {
-          notify.success('Product and stock updated successfully')
-          // Trigger immediate notification check across the entire admin panel
-          window.dispatchEvent(new CustomEvent('vastraa:stock-updated'))
-        }).catch((err) => {
-          console.error('Failed to update product in DB:', err)
-          notify.error('Could not save stock update to database')
+          totalStock: totalVariantStock,
         })
-      }
-    } else {
-      const newProduct = {
-        id: Date.now(),
-        title: formData.title,
-        category: formData.category,
-        sku: finalSku,
-        fabric: formData.fabric,
-        weight: Number(formData.weight) || 800,
-        design: formData.design,
-        availableColors: formData.availableColors,
-        color: formData.availableColors[0] || formData.color,
-
-        description: formData.description,
-        price: Number(formData.price),
-        originalPrice: Number(formData.originalPrice || formData.price),
-        stock: Number(formData.stock || 0),
-        lowStockAlert: Number(formData.lowStockAlert || 3),
-        badge: formData.badge,
-        status: finalStatus,
-        rating: 5,
-        ratingCount: 1,
-        image:
-          formData.image ||
-          'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&w=800&q=80',
-        additionalImages: formData.additionalImages || [],
-      }
-      setProducts((prev) => [newProduct, ...prev])
+        .then((created) => {
+          const newP = created || {
+            id: Date.now(),
+            title: formData.title,
+            category: formData.category,
+            sku: finalSku,
+            price: primaryPrice,
+            originalPrice: primaryOriginalPrice,
+            stock: totalVariantStock,
+            totalStock: totalVariantStock,
+            image: mainImg,
+            variants: payloadVariants,
+          }
+          setProducts((prev) => [newP, ...prev])
+          notify.success('New product with variants created successfully')
+          window.dispatchEvent(new CustomEvent('vastraa:stock-updated'))
+        })
+        .catch((err) => {
+          console.error('Failed to create product in DB:', err)
+          notify.error(err?.response?.data?.message || 'Could not create product')
+        })
     }
     setIsModalOpen(false)
   }
@@ -873,18 +1143,49 @@ export default function AdminProducts() {
 
                         {/* Stock Status */}
                         <td className="py-3 px-4">
-                          {stock === 0 ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-bold bg-stone-100 text-stone-700 border border-stone-300">
-                              Out of Stock (0)
-                            </span>
-                          ) : stock <= (product.lowStockAlert || 3) ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
-                              Low Stock ({stock})
-                            </span>
+                          {product.variants && product.variants.length > 0 ? (
+                            <div className="space-y-1.5 min-w-[130px]">
+                              {product.variants.map((v, vIdx) => {
+                                const vStock = Number(v.stock) || 0
+                                const attrLabel = [v.color, v.design].filter(Boolean).join(' • ') || `Variant ${vIdx + 1}`
+                                const isOut = vStock === 0
+                                const isLow = !isOut && vStock <= (product.lowStockAlert || 3)
+                                return (
+                                  <div key={v._id || v.id || vIdx} className="flex items-center justify-between gap-2 text-[11px]">
+                                    <span className="text-stone-600 truncate max-w-[90px] font-medium" title={attrLabel}>
+                                      {attrLabel}:
+                                    </span>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-none font-bold text-[10px] shrink-0 border ${
+                                        isOut
+                                          ? 'bg-stone-100 text-stone-600 border-stone-300'
+                                          : isLow
+                                          ? 'bg-red-50 text-red-700 border-red-200'
+                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      }`}
+                                    >
+                                      {isOut ? 'Out (0)' : isLow ? `Low (${vStock})` : `${vStock} left`}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none-full text-[11px] font-medium bg-emerald-500 text-white">
-                              In Stock ({stock})
-                            </span>
+                            <div>
+                              {stock === 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none text-[11px] font-bold bg-stone-100 text-stone-700 border border-stone-300">
+                                  Out of Stock (0)
+                                </span>
+                              ) : stock <= (product.lowStockAlert || 3) ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none text-[11px] font-bold bg-red-50 text-red-700 border border-red-200">
+                                  Low Stock ({stock})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-none text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  In Stock ({stock})
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
 
@@ -896,7 +1197,7 @@ export default function AdminProducts() {
                               title="Edit Saree"
                             />
                             <AdminDeleteButton
-                              onClick={() => handleDelete(productId)}
+                              onClick={() => handleDelete(product)}
                               title="Delete Saree"
                             />
                           </div>
@@ -1012,9 +1313,7 @@ export default function AdminProducts() {
                 <h3 className="font-normal text-base font-bold text-[#1F1713]">
                   Material
                 </h3>
-                <p className="text-xs text-[#73655B] mt-0.5">
-                  Weave and thread materials ({fabricList.length} total)
-                </p>
+           
               </div>
 
               {/* Add Fabric Form */}
@@ -1062,9 +1361,7 @@ export default function AdminProducts() {
                 <h3 className="font-normal text-base font-bold text-[#1F1713]">
                   Design
                 </h3>
-                <p className="text-xs text-[#73655B] mt-0.5">
-                  Pallu, border, and zari patterns ({designList.length} total)
-                </p>
+
               </div>
 
               {/* Add Design Form */}
@@ -1112,9 +1409,7 @@ export default function AdminProducts() {
                 <h3 className="font-normal text-base font-bold text-[#1F1713]">
                   Available Colors
                 </h3>
-                <p className="text-xs text-[#73655B] mt-0.5">
-                  Color palette swatches ({colorList.length} total)
-                </p>
+              
               </div>
 
               {/* Add Color Form */}
@@ -1226,16 +1521,13 @@ export default function AdminProducts() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-xs">
           <div className="bg-white rounded-none-2xl border border-[#EDE4D8] w-full max-w-5xl max-h-[92vh] overflow-hidden shadow-2xl flex flex-col">
             {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-[#EDE4D8] flex items-center justify-between bg-[#FAF7F2] shrink-0">
+            <div className="px-6 py-3.5 border-b border-[#EDE4D8] flex items-center justify-between bg-[#FAF7F2] shrink-0">
               <div className="flex items-center gap-3">
-
                 <div>
                   <h2 className="font-normal text-lg font-bold text-[#1F1713]">
                     {editingProduct ? 'Edit Product' : 'Add New Product'}
                   </h2>
-                  <p className="text-[11px] text-stone-500">
-                    Fields marked with <span className="text-red-500 font-bold">*</span> are mandatory.
-                  </p>
+            
                 </div>
               </div>
               <button
@@ -1247,497 +1539,557 @@ export default function AdminProducts() {
               </button>
             </div>
 
+            {/* Modal Step Navigation Tabs */}
+            <div className="px-6 border-b border-[#EDE4D8] bg-white flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setModalTab('basic')}
+                className={`py-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  modalTab === 'basic'
+                    ? 'border-[#6D021B] text-[#6D021B]'
+                    : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  modalTab === 'basic' ? 'bg-[#6D021B] text-white' : 'bg-stone-100 text-stone-600'
+                }`}>
+                  1
+                </span>
+                <span>Product Basic Information</span>
+                {(errors.title || errors.category || errors.fabric || errors.description || errors.price) && (
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextToVariants}
+                className={`py-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
+                  modalTab === 'variants'
+                    ? 'border-[#6D021B] text-[#6D021B]'
+                    : 'border-transparent text-stone-500 hover:text-stone-800'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  modalTab === 'variants' ? 'bg-[#6D021B] text-white' : 'bg-stone-100 text-stone-600'
+                }`}>
+                  2
+                </span>
+                <span>Product Variants</span>
+                {(errors.stock || errors.image || errors.variants) && (
+                  <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                )}
+              </button>
+            </div>
+
             {/* Modal Body: Left Form (Scrollable) + Right Live Preview */}
             <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-[#EDE4D8]">
-              {/* LEFT COLUMN: 6 Product Information Sections (lg:col-span-7 xl:col-span-8) */}
+              {/* LEFT COLUMN: Form with Step Tabs */}
               <form onSubmit={handleSave} className="lg:col-span-7 xl:col-span-8 p-5 sm:p-6 space-y-6 text-xs">
-                {/* 1. Basic Information */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Basic Information
-                    </h3>
-                  </div>
+                {modalTab === 'basic' ? (
+                  <>
+                    {/* 1. Basic Information */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
+                        <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
+                          Basic Information
+                        </h3>
+                      </div>
 
-                  <div className="space-y-3">
-                    {/* Saree Title */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        1. Saree Title <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="field-title"
-                        type="text"
-                        value={formData.title}
-                        onChange={(e) => {
-                          const val = e.target.value
-                          setFormData((prev) => ({
-                            ...prev,
-                            title: val,
-                            sku: prev.sku || generateSku(prev.category, val),
-                          }))
-                          if (errors.title) setErrors((prev) => ({ ...prev, title: null }))
-                        }}
-                        placeholder="e.g. Royal Maroon Katan Silk Banarasi Saree"
-                        className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-medium transition-colors ${errors.title ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                          }`}
-                      />
-                      {errors.title && (
-                        <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                          ⚠ {errors.title}
-                        </p>
-                      )}
+                      <div className="space-y-3">
+                        {/* Saree Title */}
+                        <div>
+                          <label className="block font-bold text-stone-700 mb-1">
+                            1. Saree Title <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            id="field-title"
+                            type="text"
+                            value={formData.title}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setFormData((prev) => ({
+                                ...prev,
+                                title: val,
+                                sku: prev.sku || generateSku(prev.category, val),
+                              }))
+                              if (errors.title) setErrors((prev) => ({ ...prev, title: null }))
+                            }}
+                            placeholder="e.g. Royal Maroon Katan Silk Banarasi Saree"
+                            className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-medium transition-colors ${errors.title ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
+                              }`}
+                          />
+                          {errors.title && (
+                            <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
+                              ⚠ {errors.title}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Category & SKU */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block font-bold text-stone-700 mb-1">
+                              2. Category <span className="text-red-500">*</span>
+                            </label>
+                            <select
+                              id="field-category"
+                              value={formData.category}
+                              onChange={(e) => {
+                                const cat = e.target.value
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  category: cat,
+                                  sku: cat ? generateSku(cat, prev.title) : '',
+                                }))
+                                if (errors.category) setErrors((prev) => ({ ...prev, category: null }))
+                              }}
+                              className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-medium transition-colors ${errors.category ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
+                                }`}
+                            >
+                              <option value="">Select Category</option>
+                              {categories.filter((c) => c !== 'All').map((c) => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                            </select>
+                            {errors.category && (
+                              <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
+                                ⚠ {errors.category}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Category & SKU */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* 2. Saree Specifications (Shared Defaults) */}
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Fabric */}
+                        <div>
+                          <label className="block font-bold text-stone-700 mb-1">
+                            Fabric / Material <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            id="field-fabric"
+                            value={formData.fabric}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setFormData((prev) => ({
+                                ...prev,
+                                fabric: val,
+                                variants: (prev.variants || []).map((v, i) => i === 0 && !v.material ? { ...v, material: val } : v),
+                              }))
+                              if (errors.fabric) setErrors((prev) => ({ ...prev, fabric: null }))
+                            }}
+                            className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white transition-colors ${errors.fabric ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
+                              }`}
+                          >
+                            <option value="">Select Fabric</option>
+                            {fabricList.map((fab) => (
+                              <option key={fab} value={fab}>{fab}</option>
+                            ))}
+                          </select>
+                          {errors.fabric && (
+                            <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
+                              ⚠ {errors.fabric}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Design */}
+                        <div>
+                          <label className="block font-bold text-stone-700 mb-1">
+                            Design
+                          </label>
+                          <select
+                            value={formData.design}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setFormData((prev) => ({
+                                ...prev,
+                                design: val,
+                                variants: (prev.variants || []).map((v, i) => i === 0 && !v.design ? { ...v, design: val } : v),
+                              }))
+                            }}
+                            className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl focus:outline-none focus:border-[#6D021B] bg-white"
+                          >
+                            <option value="">Select Design</option>
+                            {designList.map((dsg) => (
+                              <option key={dsg} value={dsg}>{dsg}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. Product Description */}
+                    <div className="space-y-3">
                       <div>
                         <label className="block font-bold text-stone-700 mb-1">
-                          2. Category <span className="text-red-500">*</span>
+                          Product Description <span className="text-red-500">*</span>
                         </label>
-                        <select
-                          id="field-category"
-                          value={formData.category}
+                        <textarea
+                          id="field-description"
+                          rows="3"
+                          value={formData.description}
                           onChange={(e) => {
-                            const cat = e.target.value
-                            setFormData((prev) => ({
-                              ...prev,
-                              category: cat,
-                              sku: cat ? generateSku(cat, prev.title) : '',
-                            }))
-                            if (errors.category) setErrors((prev) => ({ ...prev, category: null }))
+                            setFormData({ ...formData, description: e.target.value })
+                            if (errors.description) setErrors((prev) => ({ ...prev, description: null }))
                           }}
-                          className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-medium transition-colors ${errors.category ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
+                          placeholder="Tell customers about the weave, zari quality, motifs, styling suggestions..."
+                          className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white leading-relaxed transition-colors ${errors.description ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
                             }`}
-                        >
-                          <option value="">Select Category</option>
-                          {categories.filter((c) => c !== 'All').map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                        {errors.category && (
+                        />
+                        {errors.description && (
                           <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                            ⚠ {errors.category}
+                            ⚠ {errors.description}
                           </p>
                         )}
                       </div>
-
-
                     </div>
-                  </div>
-                </div>
 
-                {/* 2. Saree Specifications */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Saree Specifications
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {/* Fabric */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Fabric / Material <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        id="field-fabric"
-                        value={formData.fabric}
-                        onChange={(e) => {
-                          setFormData({ ...formData, fabric: e.target.value })
-                          if (errors.fabric) setErrors((prev) => ({ ...prev, fabric: null }))
-                        }}
-                        className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white transition-colors ${errors.fabric ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                          }`}
+                    {/* Step 1 Next Button Banner */}
+                    <div className="pt-3 border-t border-[#EDE4D8] flex items-center justify-end">
+                  
+                      <button
+                        type="button"
+                        onClick={handleNextToVariants}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#6D021B] hover:bg-[#580014] text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
                       >
-                        <option value="">Select Fabric</option>
-                        {fabricList.map((fab) => (
-                          <option key={fab} value={fab}>{fab}</option>
-                        ))}
-                      </select>
-                      {errors.fabric && (
-                        <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                          ⚠ {errors.fabric}
-                        </p>
-                      )}
+                        <span>Next: Add Variants & Stock</span>
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                     </div>
-
-                    {/* Design */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Design
-                      </label>
-                      <select
-                        value={formData.design}
-                        onChange={(e) => setFormData({ ...formData, design: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl focus:outline-none focus:border-[#6D021B] bg-white"
-                      >
-                        <option value="">Select Design</option>
-                        {designList.map((dsg) => (
-                          <option key={dsg} value={dsg}>{dsg}</option>
-                        ))}
-                      </select>
-                    </div>
-
-
-
-                  </div>
-
-                  {/* 6. Available Colors (Multi-Select) */}
-                  <div className="pt-1" id="field-availableColors" tabIndex="-1">
-                    <label className="block font-bold text-stone-700 mb-1">
-                      Available Colors <span className="text-red-500">*</span> ({formData.availableColors.length} selected)
-                    </label>
-                    <div className={`flex items-center gap-2 pt-1 pb-1 flex-wrap rounded-none-xl transition-all ${errors.availableColors ? 'p-2 border border-red-500 bg-red-50/20' : ''
-                      }`}>
-                      {colorList.map((col) => {
-                        const isSelected = formData.availableColors.includes(col.name)
-                        return (
-                          <button
-                            key={col.name}
-                            type="button"
-                            onClick={() => {
-                              toggleColor(col.name)
-                              if (errors.availableColors) setErrors((prev) => ({ ...prev, availableColors: null }))
-                            }}
-                            title={`${col.name} ${isSelected ? '(Selected)' : ''}`}
-                            className={`relative px-2.5 py-1 rounded-none-lg border text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${isSelected
-                              ? 'border-[#6D021B] bg-[#6D021B]/5 text-[#6D021B] font-bold shadow-2xs'
-                              : 'border-[#EDE4D8] bg-[#FAF7F2] text-stone-600 hover:border-stone-400'
-                              }`}
-                          >
-                            <span
-                              className="w-3 h-3 rounded-none-full border border-black/15 shadow-2xs shrink-0"
-                              style={{ backgroundColor: col.hex }}
-                            />
-                            <span>{col.name}</span>
-                            {isSelected && <span className="text-[#6D021B] text-[10px]">✓</span>}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {errors.availableColors && (
-                      <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                        ⚠ {errors.availableColors}
-                      </p>
-                    )}
-                  </div>
-
-
-                </div>
-
-                {/* 3. Product Description */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Product Description
-                    </h3>
-                  </div>
-
-                  <div>
-                    <label className="block font-bold text-stone-700 mb-1">
-                      Product Description <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      id="field-description"
-                      rows="3"
-                      value={formData.description}
-                      onChange={(e) => {
-                        setFormData({ ...formData, description: e.target.value })
-                        if (errors.description) setErrors((prev) => ({ ...prev, description: null }))
-                      }}
-                      placeholder="Tell customers about the weave, zari quality, motifs, styling suggestions..."
-                      className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white leading-relaxed transition-colors ${errors.description ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                        }`}
-                    />
-                    {errors.description && (
-                      <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                        ⚠ {errors.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* 4. Pricing Details */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Pricing Details
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Selling Price */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Selling Price (₹) <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="field-price"
-                        type="number"
-                        min="1"
-                        value={formData.price}
-                        onChange={(e) => {
-                          setFormData({ ...formData, price: e.target.value })
-                          if (errors.price) setErrors((prev) => ({ ...prev, price: null }))
-                        }}
-                        placeholder="7499"
-                        className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-bold text-stone-800 transition-colors ${errors.price ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                          }`}
-                      />
-                      {errors.price && (
-                        <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                          ⚠ {errors.price}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Original Price */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Original Price (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={formData.originalPrice}
-                        onChange={(e) => setFormData({ ...formData, originalPrice: e.target.value })}
-                        placeholder="9999"
-                        className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl focus:outline-none focus:border-[#6D021B] bg-white"
-                      />
-                    </div>
-
-                    {/* Discount (Auto-calculated) */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block font-bold text-stone-700">
-                          Discount %
-                        </label>
-                        <span className="text-[10px] text-emerald-600 font-bold uppercase bg-emerald-50 px-1.5 py-0.5 rounded-none">
-                          Auto-calculated
-                        </span>
-                      </div>
-                      <div className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl bg-[#FAF7F2] font-bold text-emerald-700 flex items-center justify-between">
-                        <span>
-                          {formData.price && formData.originalPrice && Number(formData.originalPrice) > Number(formData.price)
-                            ? `${Math.round(((Number(formData.originalPrice) - Number(formData.price)) / Number(formData.originalPrice)) * 100)}% OFF`
-                            : 'No Discount'}
-                        </span>
-                        {formData.price && formData.originalPrice && Number(formData.originalPrice) > Number(formData.price) && (
-                          <span className="text-[10px] font-normal text-stone-500">
-                            Save ₹{Number(formData.originalPrice) - Number(formData.price)}
+                  </>
+                ) : (
+                  <>
+                    {/* 5. TAB 2: PRODUCT VARIATIONS & ATTRIBUTES MANAGER */}
+                    <div className="space-y-4">
+                      {/* Photo recommendation hint */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-[#FAF7F2] border border-[#EDE4D8] rounded-lg">
+                        <div className="flex items-center gap-2 text-xs text-stone-700">
+                          <ImageIcon className="w-4 h-4 text-[#6D021B] shrink-0" />
+                          <span>
+                            <strong>Photo Guide:</strong> Recommended <strong>800 × 1066 px</strong> (3:4 portrait ratio, max 5 MB). JPG / PNG / WebP.
                           </span>
-                        )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleAddVariant}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#6D021B] hover:bg-[#580014] text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer self-start sm:self-auto shrink-0"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Another Variant</span>
+                        </button>
                       </div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* 5. Inventory Details */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Inventory Details
-                    </h3>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {/* Stock Units */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Stock Units <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="field-stock"
-                        type="number"
-                        min="0"
-                        value={formData.stock}
-                        onChange={(e) => {
-                          setFormData({ ...formData, stock: e.target.value })
-                          if (errors.stock) setErrors((prev) => ({ ...prev, stock: null }))
-                        }}
-                        placeholder="15"
-                        className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white font-medium transition-colors ${errors.stock ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                          }`}
-                      />
+                      {errors.variants && (
+                        <p className="text-xs text-red-600 font-semibold">⚠ {errors.variants}</p>
+                      )}
                       {errors.stock && (
-                        <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                          ⚠ {errors.stock}
-                        </p>
+                        <p className="text-xs text-red-600 font-semibold">⚠ {errors.stock}</p>
                       )}
-                    </div>
 
-                    {/* Low Stock Alert */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Low Stock Alert <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        id="field-lowStockAlert"
-                        type="number"
-                        min="1"
-                        value={formData.lowStockAlert}
-                        onChange={(e) => {
-                          setFormData({ ...formData, lowStockAlert: e.target.value })
-                          if (errors.lowStockAlert) setErrors((prev) => ({ ...prev, lowStockAlert: null }))
-                        }}
-                        placeholder="3"
-                        className={`w-full px-3 py-2 border rounded-none-xl focus:outline-none bg-white transition-colors ${errors.lowStockAlert ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8] focus:border-[#6D021B]'
-                          }`}
-                      />
-                      {errors.lowStockAlert && (
-                        <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                          ⚠ {errors.lowStockAlert}
-                        </p>
-                      )}
-                    </div>
+                      {/* List of Variant Cards (Amazon style) */}
+                      <div className="space-y-3">
+                        {(formData.variants || []).map((variant, index) => {
+                          const colorObj = colorList.find((c) => c.name.toLowerCase() === (variant.color || '').toLowerCase())
+                          return (
+                            <div
+                              key={variant.id || index}
+                              className="p-3.5 bg-white border border-[#EDE4D8] rounded-none-xl shadow-2xs hover:border-[#6D021B]/50 transition-all space-y-3 relative group"
+                            >
+                              {/* Variant Card Top Row */}
+                              <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="w-5 h-5 rounded-full bg-[#6D021B] text-white text-[10px] font-bold flex items-center justify-center">
+                                    {index + 1}
+                                  </span>
+                                  <span className="font-bold text-stone-800 text-xs">
+                                    Variant {index + 1}:
+                                  </span>
+                                  <span
+                                    className="w-3.5 h-3.5 rounded-full border border-black/20 shrink-0 inline-block"
+                                    style={{ backgroundColor: colorObj?.hex || variant.hex || '#6D021B' }}
+                                  />
+                                  <span className="font-semibold text-stone-700 text-xs">
+                                    {variant.color || 'Unassigned'} • {variant.design || 'Default Design'}
+                                  </span>
+                                </div>
 
-                    {/* Product Weight (in grams) for Shipping Cost Calculation */}
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block font-bold text-stone-700">
-                          Weight (in grams) <span className="text-red-500">*</span>
-                        </label>
-                        <span className="text-[10px] text-stone-400">
-                          {formData.weight ? `${(Number(formData.weight) / 1000).toFixed(2)} kg` : ''}
-                        </span>
+                                {(formData.variants || []).length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveVariant(index)}
+                                    className="text-stone-400 hover:text-red-600 p-1 rounded-md hover:bg-red-50 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                                    title="Remove variant"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span className="text-[11px] font-medium hidden sm:inline">Delete</span>
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Variant Form: [Color, Design, Material, Stock, Alert Stock] */}
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                                {/* 1. Color */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Color <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={variant.color}
+                                    onChange={(e) => handleUpdateVariant(index, 'color', e.target.value)}
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white text-xs font-medium"
+                                  >
+                                    {colorList.map((c) => (
+                                      <option key={c.name} value={c.name}>
+                                        {c.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* 2. Design */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Design
+                                  </label>
+                                  <select
+                                    value={variant.design}
+                                    onChange={(e) => handleUpdateVariant(index, 'design', e.target.value)}
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white text-xs font-medium"
+                                  >
+                                    {designList.map((d) => (
+                                      <option key={d} value={d}>
+                                        {d}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* 3. Material */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Material <span className="text-red-500">*</span>
+                                  </label>
+                                  <select
+                                    value={variant.material}
+                                    onChange={(e) => handleUpdateVariant(index, 'material', e.target.value)}
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white text-xs font-medium"
+                                  >
+                                    {fabricList.map((f) => (
+                                      <option key={f} value={f}>
+                                        {f}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                {/* 4. Stock Units */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Stock Units <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={variant.stock !== undefined ? variant.stock : ''}
+                                    onChange={(e) => handleUpdateVariant(index, 'stock', Number(e.target.value))}
+                                    placeholder="5"
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white font-bold text-[#1F1713] text-xs"
+                                  />
+                                </div>
+
+                                {/* 5. Alert Stock */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Alert Stock
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={variant.lowStockAlert !== undefined ? variant.lowStockAlert : 2}
+                                    onChange={(e) => handleUpdateVariant(index, 'lowStockAlert', Number(e.target.value))}
+                                    placeholder="2"
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white text-stone-700 text-xs"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Variant Specific Pricing & Status Row */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-stone-100 bg-[#FAF7F2]/50 p-2.5 rounded-none">
+                                {/* Variant Selling Price */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Selling Price (₹) <span className="text-red-500">*</span>
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={variant.price !== undefined ? variant.price : ''}
+                                    onChange={(e) => handleUpdateVariant(index, 'price', e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="1999"
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white font-bold text-[#6D021B] text-xs"
+                                  />
+                                </div>
+
+                                {/* Variant Original Price */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Original Price (₹)
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={variant.originalPrice !== undefined ? variant.originalPrice : ''}
+                                    onChange={(e) => handleUpdateVariant(index, 'originalPrice', e.target.value === '' ? '' : Number(e.target.value))}
+                                    placeholder="2499"
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white text-stone-700 text-xs"
+                                  />
+                                </div>
+
+                                {/* Variant Discount Display */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Discount %
+                                  </label>
+                                  <div className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none bg-white font-bold text-emerald-700 text-xs flex items-center justify-between h-[31px]">
+                                    <span>
+                                      {variant.price && variant.originalPrice && Number(variant.originalPrice) > Number(variant.price)
+                                        ? `${Math.round(((Number(variant.originalPrice) - Number(variant.price)) / Number(variant.originalPrice)) * 100)}% OFF`
+                                        : 'No Discount'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Variant Status */}
+                                <div>
+                                  <label className="block font-bold text-stone-700 mb-1 text-[11px]">
+                                    Variant Status
+                                  </label>
+                                  <select
+                                    value={variant.status || 'Active'}
+                                    onChange={(e) => handleUpdateVariant(index, 'status', e.target.value)}
+                                    className="w-full px-2.5 py-1.5 border border-[#EDE4D8] rounded-none focus:outline-none focus:border-[#6D021B] bg-white font-medium text-xs h-[31px]"
+                                  >
+                                    <option value="Active">Active</option>
+                                    <option value="Out of Stock">Out of Stock</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              {/* Variant Images: Main Image + Up to 4 Additional Angles */}
+                              <div className="pt-2 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center gap-3">
+                                {/* Main Variant Photo */}
+                                <div className="flex items-center gap-2">
+                                  <div className="relative w-14 h-18 rounded-none border border-[#EDE4D8] bg-[#FAF7F2] overflow-hidden shrink-0 group/img flex items-center justify-center">
+                                    {variant.image ? (
+                                      <>
+                                        <img
+                                          src={getCmsImageUrl(variant.image)}
+                                          alt={`variant-${index}-main`}
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdateVariant(index, 'image', '')}
+                                          className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-red-600 text-white rounded-full flex items-center justify-center text-[9px] opacity-0 group-hover/img:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                          title="Remove photo"
+                                        >
+                                          ×
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <label className="w-full h-full flex flex-col items-center justify-center text-stone-400 hover:text-[#6D021B] cursor-pointer hover:bg-white transition-all text-center p-1">
+                                        <Upload className="w-3.5 h-3.5 text-[#DEA53B] mb-0.5" />
+                                        <span className="text-[8.5px] font-bold leading-tight">+ Main</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          onChange={(e) => handleVariantImageUpload(index, e)}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="block text-[11px] font-bold text-stone-700">Main Photo <span className="text-red-500">*</span></span>
+                                    <span className="block text-[10px] text-stone-400">Ratio 3:4 • 800×1066</span>
+                                  </div>
+                                </div>
+
+                                {/* Additional 4 Angle Photos */}
+                                <div className="flex-1 sm:border-l sm:border-stone-100 sm:pl-3">
+                                  <div className="flex items-baseline justify-between mb-1">
+                                    <span className="block text-[11px] font-bold text-stone-700">
+                                      Additional Photos ({Array.isArray(variant.additionalImages) ? variant.additionalImages.length : 0}/4)
+                                    </span>
+                                    <span className="text-[10px] text-stone-400">Max 5 MB each</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {(Array.isArray(variant.additionalImages) ? variant.additionalImages : []).map((imgUrl, extraIdx) => (
+                                      <div
+                                        key={extraIdx}
+                                        className="relative w-12 h-14 rounded-none border border-[#EDE4D8] overflow-hidden group/extra shadow-2xs shrink-0"
+                                      >
+                                        <img
+                                          src={getCmsImageUrl(imgUrl)}
+                                          alt={`variant-${index}-angle-${extraIdx}`}
+                                          className="w-full h-full object-cover"
+                                        />
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveVariantAdditionalImage(index, extraIdx)}
+                                          className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-red-600 text-white rounded-full flex items-center justify-center text-[9px] opacity-0 group-hover/extra:opacity-100 transition-opacity cursor-pointer shadow-xs"
+                                          title="Remove angle"
+                                        >
+                                          ×
+                                        </button>
+                                      </div>
+                                    ))}
+
+                                    {(!variant.additionalImages || variant.additionalImages.length < 4) && (
+                                      <label className="w-12 h-14 rounded-none border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-[#FAF7F2] hover:bg-white flex flex-col items-center justify-center text-stone-400 hover:text-[#6D021B] cursor-pointer transition-colors shadow-2xs shrink-0">
+                                        <Plus className="w-3.5 h-3.5 text-[#DEA53B]" />
+                                        <span className="text-[8px] font-semibold mt-0.5">+ Extra</span>
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          multiple
+                                          onChange={(e) => handleVariantAdditionalImagesUpload(index, e)}
+                                          className="hidden"
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
-                      <input
-                        id="field-weight"
-                        type="number"
-                        min="50"
-                        step="50"
-                        value={formData.weight}
-                        onChange={(e) => {
-                          setFormData({ ...formData, weight: e.target.value })
-                        }}
-                        placeholder="800"
-                        className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl focus:outline-none focus:border-[#6D021B] bg-white font-medium"
-                      />
-                      <span className="text-[10px] text-stone-400 mt-0.5 block">
-                        Used for weight-based shipping calculation
-                      </span>
                     </div>
 
-
-
-                    {/* Status */}
-                    <div>
-                      <label className="block font-bold text-stone-700 mb-1">
-                        Product Status
-                      </label>
-                      <select
-                        value={formData.status}
-                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                        className="w-full px-3 py-2 border border-[#EDE4D8] rounded-none-xl focus:outline-none focus:border-[#6D021B] bg-white font-medium"
+                    {/* Step 2 Back Button */}
+                    <div className="pt-3 border-t border-[#EDE4D8] flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setModalTab('basic')}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#FAF7F2] border border-[#EDE4D8] hover:bg-stone-100 text-stone-700 rounded-lg text-xs font-bold transition-all cursor-pointer"
                       >
-                        <option value="Active">Active</option>
-                        <option value="Out of Stock">Out of Stock</option>
-                      </select>
+                        <ChevronLeft className="w-4 h-4" />
+                        <span>Back to Basic Info</span>
+                      </button>
+
+                      <AdminSaveButton onClick={(e) => handleSave(e, 'Active')}>
+                        {editingProduct ? 'Update Product' : 'Save Product'}
+                      </AdminSaveButton>
                     </div>
-                  </div>
-                </div>
-
-                {/* 6. Product Images */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 pb-1.5 border-b border-[#EDE4D8]">
-                    <h3 className="font-normal text-sm font-bold text-[#1F1713] uppercase tracking-wider">
-                      Product Images
-                    </h3>
-                  </div>
-
-                  {/* 18. Main Image & 20. URL */}
-                  <div id="field-image" tabIndex="-1" className={`p-3 bg-[#FAF7F2] border rounded-none-xl space-y-2.5 transition-all ${errors.image ? 'border-red-500 ring-2 ring-red-100 bg-red-50/20' : 'border-[#EDE4D8]'
-                    }`}>
-                    <label className="block font-bold text-stone-700">
-                      Main Product Image <span className="text-red-500">*</span>
-                    </label>
-
-                    <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <label className="flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 border border-dashed border-[#DEA53B] hover:border-[#6D021B] rounded-none-xl bg-white hover:bg-[#FFFDF9] text-[#6D021B] cursor-pointer transition-all shadow-2xs shrink-0">
-                        <Upload className="w-4 h-4 text-[#DEA53B]" />
-                        <span className="font-bold text-xs">{formData.image ? 'Change Main Image' : 'Upload Main Image'}</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => {
-                            handleImageFileChange(e)
-                            if (errors.image) setErrors((prev) => ({ ...prev, image: null }))
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-
-                      {formData.image && (
-                        <div className="relative w-16 h-20 rounded-none-lg border border-[#EDE4D8] overflow-hidden group shadow-2xs shrink-0">
-                          <img
-                            src={getCmsImageUrl(formData.image)}
-                            alt="Main preview"
-                            className="w-full h-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setFormData((prev) => ({ ...prev, image: '' }))}
-                            title="Remove image"
-                            className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-none-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-sm"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {errors.image && (
-                      <p className="mt-1 text-[11px] text-red-600 font-semibold flex items-center gap-1">
-                        ⚠ {errors.image}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* 19. Additional Product Images */}
-                  <div className="p-3 bg-[#FAF7F2] border border-[#EDE4D8] rounded-none-xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="block font-bold text-stone-700">
-                        Additional Product Images
-                      </label>
-                      <span className="text-[10px] text-stone-400">Up to 4 extra photos</span>
-                    </div>
-
-                    <div className="flex items-center gap-2.5 flex-wrap">
-                      {formData.additionalImages.map((imgUrl, i) => (
-                        <div key={i} className="relative w-16 h-20 rounded-none-lg border border-[#EDE4D8] overflow-hidden group shadow-2xs">
-                          <img src={getCmsImageUrl(imgUrl)} alt={`angle-${i}`} className="w-full h-full object-cover" />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setFormData((prev) => ({
-                                ...prev,
-                                additionalImages: prev.additionalImages.filter((_, idx) => idx !== i),
-                              }))
-                            }
-                            className="absolute top-1 right-1 w-4 h-4 bg-red-600 text-white rounded-none-full flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-
-                      {formData.additionalImages.length < 4 && (
-                        <label className="w-16 h-20 rounded-none-lg border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-white flex flex-col items-center justify-center text-stone-400 hover:text-[#6D021B] cursor-pointer transition-colors shadow-2xs">
-                          <Plus className="w-4 h-4 text-[#DEA53B]" />
-                          <span className="text-[9px] mt-0.5 font-semibold">+ Add</span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleAdditionalImagesChange}
-                            className="hidden"
-                          />
-                        </label>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </form>
 
               {/* RIGHT COLUMN: 7. Live Product Preview Card (lg:col-span-5 xl:col-span-4) */}
@@ -1753,18 +2105,21 @@ export default function AdminProducts() {
                   <div className="bg-white border border-[#E8DDCE] rounded-none-none overflow-hidden shadow-lg mx-auto max-w-[280px]">
                     {/* 21. Saree Image Preview */}
                     <div className="relative aspect-[3/4] w-full bg-[#F5EFE6] overflow-hidden">
-                      {formData.image ? (
-                        <img
-                          src={getCmsImageUrl(formData.image)}
-                          alt={formData.title || 'Preview'}
-                          className="w-full h-full object-cover object-center"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-stone-300">
-                          <ImageIcon className="w-10 h-10 mb-1" />
-                          <span className="text-xs">No image selected</span>
-                        </div>
-                      )}
+                      {(() => {
+                        const previewImg = formData.variants?.[0]?.image || formData.image
+                        return previewImg ? (
+                          <img
+                            src={getCmsImageUrl(previewImg)}
+                            alt={formData.title || 'Preview'}
+                            className="w-full h-full object-cover object-center"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center text-stone-300">
+                            <ImageIcon className="w-10 h-10 mb-1" />
+                            <span className="text-xs">No image selected</span>
+                          </div>
+                        )
+                      })()}
 
 
                       {formData.badge && (
@@ -1813,19 +2168,27 @@ export default function AdminProducts() {
 
                       {/* 26. Price, 27. Original Price, 28. Discount */}
                       <div className="flex items-baseline gap-2 pt-1 border-t border-stone-100">
-                        <span className="font-bold text-sm text-[#6D021B]">
-                          ₹{formData.price ? Number(formData.price).toLocaleString() : '0'}
-                        </span>
-                        {formData.originalPrice && Number(formData.originalPrice) > Number(formData.price) && (
-                          <>
-                            <span className="text-[11px] text-stone-400 line-through">
-                              ₹{Number(formData.originalPrice).toLocaleString()}
-                            </span>
-                            <span className="text-[10px] font-bold text-emerald-600">
-                              {Math.round(((Number(formData.originalPrice) - Number(formData.price)) / Number(formData.originalPrice)) * 100)}% OFF
-                            </span>
-                          </>
-                        )}
+                        {(() => {
+                          const previewPrice = formData.variants?.[0]?.price !== undefined && formData.variants?.[0]?.price !== '' ? Number(formData.variants[0].price) : Number(formData.price || 0)
+                          const previewOrig = formData.variants?.[0]?.originalPrice !== undefined && formData.variants?.[0]?.originalPrice !== '' ? Number(formData.variants[0].originalPrice) : Number(formData.originalPrice || 0)
+                          return (
+                            <>
+                              <span className="font-bold text-sm text-[#6D021B]">
+                                ₹{previewPrice.toLocaleString()}
+                              </span>
+                              {previewOrig > previewPrice && (
+                                <>
+                                  <span className="text-[11px] text-stone-400 line-through">
+                                    ₹{previewOrig.toLocaleString()}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-emerald-600">
+                                    {Math.round(((previewOrig - previewPrice) / previewOrig) * 100)}% OFF
+                                  </span>
+                                </>
+                              )}
+                            </>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -1838,16 +2201,82 @@ export default function AdminProducts() {
 
             {/* Modal Footer Buttons */}
             <div className="px-6 py-3.5 border-t border-[#EDE4D8] bg-[#FAF7F2] flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
+              <div className="flex items-center gap-2">
+                {modalTab === 'variants' && (
+                  <button
+                    type="button"
+                    onClick={() => setModalTab('basic')}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-stone-600 hover:text-stone-900 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Back to Basic Info</span>
+                  </button>
+                )}
+              </div>
 
               <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
                 {/* Cancel Button */}
                 <AdminCancelButton onClick={() => setIsModalOpen(false)} />
 
-                {/* Save / Update Product */}
+                {/* Save / Update Product Button */}
                 <AdminSaveButton onClick={(e) => handleSave(e, 'Active')}>
                   {editingProduct ? 'Update Product' : 'Save Product'}
                 </AdminSaveButton>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal (Theme-styled modal instead of browser alert) */}
+      {productToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-none border border-[#EDE4D8] w-full max-w-md overflow-hidden shadow-2xl p-6 space-y-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-full bg-red-50 border border-red-200 flex items-center justify-center shrink-0 text-red-600">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h3 className="font-bold text-sm text-[#1F1713]">
+                  Remove Saree from Inventory?
+                </h3>
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  Are you sure you want to remove{' '}
+                  <strong className="text-[#6D021B] font-semibold">
+                    "{productToDelete.title || 'this saree'}"
+                  </strong>{' '}
+                  from inventory? This action will permanently delete all its variant details and cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-2.5 border-t border-[#EDE4D8]">
+              <button
+                type="button"
+                onClick={() => setProductToDelete(null)}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-none transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteProduct}
+                disabled={isDeleting}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-none transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-2xs"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Removing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Yes, Remove</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

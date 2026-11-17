@@ -6,12 +6,14 @@ import CartDrawer from './components/CartDrawer'
 import CustomerAuthModal from './components/CustomerAuthModal'
 import ScrollToTop from './components/ScrollToTop'
 import MobileBottomNav from './components/MobileBottomNav'
+import GlobalNetworkBanner from './components/GlobalNetworkBanner'
+import WhatsAppFloatingButton from './components/WhatsAppFloatingButton'
 import { CartProvider } from './context/CartContext'
 import { ShippingProvider } from './context/ShippingContext'
 import { HomeCMSProvider } from './context/HomeCMSContext'
 import { SettingsProvider } from './context/SettingsContext'
 import { CustomerAuthProvider } from './context/CustomerAuthContext'
-import { AdminAuthProvider } from './context/AdminAuthContext'
+import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext'
 import { ConfirmModalProvider } from './context/ConfirmModalContext'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -63,6 +65,30 @@ import AdminReturns from './pages/admin/AdminReturns'
 // Base URL provided by Vite from single .env (BASE_URL=vasraa)
 export const BASE_URL = import.meta.env.BASE_URL
 
+// Protected Route Component for Admin Studio
+function AdminProtectedRoute() {
+  const { isAuthenticated, loading } = useAdminAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FAF7F2] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-2 border-[#6D021B] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-serif text-stone-600 tracking-wider uppercase">Authenticating...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    // Redirect unauthenticated user directly to /admin/login while preserving intended location
+    return <Navigate to="/admin/login" state={{ from: location }} replace />
+  }
+
+  return <AdminLayout />
+}
+
 // Customer Storefront Layout (includes user navbar, cart drawer, and footer)
 function UserLayout() {
   const location = useLocation()
@@ -82,6 +108,9 @@ function UserLayout() {
       {/* Global Customer Auth Modal (Google & Email OTP) */}
       <CustomerAuthModal />
 
+      {/* Global Offline Network Banner (Amazon / Flipkart Style) */}
+      <GlobalNetworkBanner />
+
       {/* Main Page View */}
       <main className="w-full flex-1">
         <Outlet />
@@ -96,6 +125,9 @@ function UserLayout() {
 
       {/* Mobile Sticky Luxury Bottom Navigation (Hidden on Login page) */}
       {!isLoginPage && <MobileBottomNav />}
+
+      {/* WhatsApp Floating Chat Widget */}
+      {!isLoginPage && <WhatsAppFloatingButton />}
     </div>
   )
 }
@@ -161,10 +193,13 @@ function App() {
                       <Route path="/privacy" element={<PrivacyPolicy />} />
                       <Route path="/checkout" element={<Checkout />} />
                       <Route path="/login" element={<Login />} />
+
+           
+
                     </Route>
 
-                    {/* ─── Admin Studio Routes ─── */}
-                    <Route path="/admin" element={<AdminLayout />}>
+                    {/* ─── Admin Studio Routes (Protected) ─── */}
+                    <Route path="/admin" element={<AdminProtectedRoute />}>
                       <Route index element={<AdminDashboard />} />
                       <Route path="products" element={<AdminProducts />} />
                       <Route path="categories" element={<Navigate to="/admin/products" replace />} />

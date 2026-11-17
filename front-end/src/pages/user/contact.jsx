@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { MapPin, Mail, Phone, CheckCircle2, Send, Sparkles } from 'lucide-react'
+import { MapPin, Mail, Phone, CheckCircle2, Send, Sparkles, AlertCircle } from 'lucide-react'
 import { useSettings } from '../../context/SettingsContext'
+import notify from '../../utils/toast'
 
 export default function Contact() {
   const { settings } = useSettings()
@@ -14,6 +15,7 @@ export default function Contact() {
   })
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
 
   // Scroll to top on mount
   useEffect(() => {
@@ -25,28 +27,73 @@ export default function Contact() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleSubmit = (e) => {
+  const mapEmbedUrl = (() => {
+    const rawUrl = settings?.googleMapsUrl?.trim() || ''
+    if (!rawUrl) return ''
+
+    // 1. Direct iframe embed URL format
+    if (rawUrl.includes('/maps/embed') || rawUrl.includes('output=embed')) {
+      return rawUrl
+    }
+
+    // 2. Check for latitude, longitude coordinates (e.g. 12.921859, 80.092649)
+    const coordsMatch = rawUrl.match(/(-?\d+\.\d+),\s*\+?(-?\d+\.\d+)/)
+    if (coordsMatch) {
+      return `https://maps.google.com/maps?q=${coordsMatch[1]},${coordsMatch[2]}&t=&z=16&ie=UTF8&iwloc=&output=embed`
+    }
+
+    // 3. Clean general query into standard embed URL
+    const cleanQuery = rawUrl.replace(/^https?:\/\/(www\.)?(google\.com\/maps\/?\??(q=)?)/i, '')
+    return `https://maps.google.com/maps?q=${encodeURIComponent(cleanQuery)}&t=&z=15&ie=UTF8&iwloc=&output=embed`
+  })()
+
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    setSubmitError('')
+
     if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
-      alert('Please fill in your name, email, and message.')
+      setSubmitError('Please fill in your name, email, and message.')
       return
     }
 
     setIsSubmitting(true)
-    setTimeout(() => {
-      setIsSubmitting(false)
-      setIsSubmitted(true)
-      setFormData({
-        name: '',
-        email: '',
-        phone: '',
-        subject: '',
-        message: '',
+    const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
+
+    try {
+      const res = await fetch(`${API_BASE}/contact`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       })
-      setTimeout(() => {
-        setIsSubmitted(false)
-      }, 5000)
-    }, 600)
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        setIsSubmitted(true)
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          subject: '',
+          message: '',
+        })
+        notify.success('Your message has been sent to our team!')
+        setTimeout(() => {
+          setIsSubmitted(false)
+        }, 8000)
+      } else {
+        setSubmitError(data.message || 'Failed to send your message. Please try again.')
+        notify.error(data.message || 'Failed to send message.')
+      }
+    } catch (err) {
+      console.error('Error submitting contact form:', err)
+      setSubmitError('Unable to connect to server. Please try again later.')
+      notify.error('Network error. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -115,17 +162,14 @@ export default function Contact() {
 
             {/* Small Gold Secondary Tag */}
             <div className="flex items-center gap-1.5 text-secondary text-xs font-bold uppercase tracking-widest mb-1.5">
-              
+
               <span>We Are Here For You</span>
             </div>
 
-            <h2 className="text-2xl sm:text-3xl font-bold text-primary tracking-tight font-serif">
+            <h2 className="text-2xl  pb-5 sm:text-3xl font-bold text-primary tracking-tight font-serif">
               Get In Touch
             </h2>
-            <p className="text-sm sm:text-base text-[#6B5E55] leading-relaxed mt-2.5 mb-7">
-              We&apos;d love to hear from you. Whether you have questions about our products,
-              need support with an order, or simply want to share feedback, our team is ready to help.
-            </p>
+
 
             {/* Success Submission Alert with Primary & Secondary theme */}
             {isSubmitted && (
@@ -134,8 +178,19 @@ export default function Contact() {
                 <div>
                   <h4 className="text-sm font-semibold text-primary">Message Sent Successfully!</h4>
                   <p className="text-xs sm:text-sm text-[#6B5E55] mt-0.5">
-                    Thank you for reaching out to Vastraa. Our concierge team will respond within 24 hours.
+                    Thank you for reaching out to Vastraa. Your message has been sent to our store email and our concierge team will respond within 24 hours.
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* Error Alert */}
+            {submitError && (
+              <div className="mb-6 p-4 rounded-none-xl bg-red-50 border border-red-200 flex items-start gap-3 animate-fade-in shadow-2xs">
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-semibold text-red-800">Unable to Send Message</h4>
+                  <p className="text-xs sm:text-sm text-red-600 mt-0.5">{submitError}</p>
                 </div>
               </div>
             )}
@@ -231,15 +286,22 @@ export default function Contact() {
 
           {/* Right Column: Google Map Embed (5 cols on lg) with Gold Secondary Border Accent */}
           <div className="lg:col-span-5 h-full">
-            <div className="w-full h-full min-h-[380px] sm:min-h-[460px] rounded-none-2xl overflow-hidden border border-[#EDE4D8] hover:border-secondary/60 shadow-xs transition-colors bg-white">
-              <iframe
-                title="Google Map Location of Tambaram, Chennai"
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d62217.47648439063!2d80.0768461759796!3d12.923846614144342!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a525f778330ff21%3A0xc3b83921!2sTambaram%2C%20Chennai%2C%20Tamil%20Nadu!5e0!3m2!1sen!2sin!4v1700000000000!5m2!1sen!2sin"
-                className="w-full h-full min-h-[380px] sm:min-h-[460px] border-0 block"
-                allowFullScreen=""
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
+            <div className="w-full h-full min-h-[380px] sm:min-h-[460px] rounded-none-2xl overflow-hidden border border-[#EDE4D8] hover:border-secondary/60 shadow-xs transition-colors bg-white flex items-center justify-center">
+              {mapEmbedUrl ? (
+                <iframe
+                  title="Google Map Location"
+                  src={mapEmbedUrl}
+                  className="w-full h-full min-h-[380px] sm:min-h-[460px] border-0 block"
+                  allowFullScreen=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              ) : (
+                <div className="text-center p-6 text-stone-400">
+                  <MapPin className="w-8 h-8 mx-auto mb-2 opacity-50 text-[#6D021B]" />
+                  <p className="text-xs font-semibold">Map location not configured in Settings</p>
+                </div>
+              )}
             </div>
           </div>
 

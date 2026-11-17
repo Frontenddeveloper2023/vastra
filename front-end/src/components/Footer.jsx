@@ -1,11 +1,13 @@
 import { Link } from 'react-router-dom'
-import vastraaLogo from '../../public/slides/logo.png'
 import { useCart } from '../context/CartContext'
 import { useSettings } from '../context/SettingsContext'
+import { getCmsImageUrl } from '../utils/imageHelper'
 
 export default function Footer() {
   const { openCart } = useCart()
   const { settings } = useSettings()
+
+  const defaultLogo = `${import.meta.env.BASE_URL || '/'}slides/logo.png`
 
   return (
     <footer
@@ -31,9 +33,9 @@ export default function Footer() {
             {/* Brand Official Logo & Name */}
             <div className="flex items-center justify-center md:justify-start gap-3.5 mb-4 text-left">
               <img
-                src={vastraaLogo}
+                src={settings?.logoUrl ? getCmsImageUrl(settings.logoUrl) : defaultLogo}
                 alt={settings.storeName || 'Vastraa - The House of Sarees'}
-                className="w-12 h-12 sm:w-14 sm:h-14 rounded-none-full object-cover shadow-md border border-secondary/50 shrink-0 bg-white"
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-contain p-1 shadow-md border border-secondary/50 shrink-0 bg-white"
               />
               <div>
                 <span className="font-normal text-2xl font-bold tracking-[0.18em] text-white uppercase block leading-none">
@@ -46,9 +48,9 @@ export default function Footer() {
             </div>
 
             {/* Brand Description */}
-            <p className="text-sm font-light text-white/75 leading-relaxed max-w-sm mb-5 text-center md:text-left mx-auto md:mx-0">
+            {/* <p className="text-sm font-light text-white/75 leading-relaxed max-w-sm mb-5 text-center md:text-left mx-auto md:mx-0">
               Curated ethnic collections designed with timeless elegance, pure silks, and warm royal palettes. Crafted for your grand celebrations and everyday grace.
-            </p>
+            </p> */}
 
             {/* Social Media Pill Buttons */}
             <div className="flex items-center justify-center md:justify-start gap-3">

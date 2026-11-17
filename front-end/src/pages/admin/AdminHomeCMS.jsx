@@ -22,7 +22,16 @@ import {
   ExternalLink,
   Smartphone,
   Laptop,
+  Compass,
+  Target,
+  ShieldCheck,
+  Award,
+  Gem,
+  HeartHandshake,
+  Scissors,
+  Info,
 } from 'lucide-react'
+import aboutPortraitDefault from '../../assets/banner-saree-portrait-1.jpg'
 import { useHomeCMS } from '../../context/HomeCMSContext'
 import productService from '../../services/productService'
 import homeCmsService from '../../services/homeCmsService'
@@ -44,9 +53,10 @@ export default function AdminHomeCMS() {
     updateCategoryShowcase,
     removeCategoryShowcase,
     updatePolicyPage,
+    updateAboutUs,
   } = useHomeCMS()
 
-  const [activeTab, setActiveTab] = useState('banners') // 'banners' | 'moods' | 'categories' | 'arrivals' | 'showcase' | 'policies'
+  const [activeTab, setActiveTab] = useState('banners') // 'banners' | 'moods' | 'categories' | 'arrivals' | 'showcase' | 'policies' | 'about'
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('')
 
   // Live products fetched directly from MongoDB
@@ -655,6 +665,104 @@ export default function AdminHomeCMS() {
     }
   }
 
+  // -------------------------------------------------------------
+  // TAB 6: About Us Page State & Handlers
+  // -------------------------------------------------------------
+  const [aboutForm, setAboutForm] = useState({
+    heroTitle: cmsData?.aboutUs?.heroTitle || 'Weaving Timeless Elegance & Cultural Heritage',
+    paragraph1: cmsData?.aboutUs?.paragraph1 || '',
+    paragraph2: cmsData?.aboutUs?.paragraph2 || '',
+    portraitImage: cmsData?.aboutUs?.portraitImage || '',
+    visionTitle: cmsData?.aboutUs?.visionTitle || 'Our Vision',
+    visionText: cmsData?.aboutUs?.visionText || '',
+    missionTitle: cmsData?.aboutUs?.missionTitle || 'Our Mission',
+    missionText: cmsData?.aboutUs?.missionText || '',
+    whyChooseTitle: cmsData?.aboutUs?.whyChooseTitle || 'Why Choose Vastraa',
+    whyChooseItems: cmsData?.aboutUs?.whyChooseItems || [],
+  })
+  const [aboutSaving, setAboutSaving] = useState(false)
+  const [aboutUploadingImg, setAboutUploadingImg] = useState(false)
+
+  // Sync aboutForm with cmsData.aboutUs changes
+  useEffect(() => {
+    if (cmsData?.aboutUs) {
+      setAboutForm({
+        heroTitle: cmsData.aboutUs.heroTitle || 'Weaving Timeless Elegance & Cultural Heritage',
+        paragraph1: cmsData.aboutUs.paragraph1 || '',
+        paragraph2: cmsData.aboutUs.paragraph2 || '',
+        portraitImage: cmsData.aboutUs.portraitImage || '',
+        visionTitle: cmsData.aboutUs.visionTitle || 'Our Vision',
+        visionText: cmsData.aboutUs.visionText || '',
+        missionTitle: cmsData.aboutUs.missionTitle || 'Our Mission',
+        missionText: cmsData.aboutUs.missionText || '',
+        whyChooseTitle: cmsData.aboutUs.whyChooseTitle || 'Why Choose Vastraa',
+        whyChooseItems: cmsData.aboutUs.whyChooseItems || [],
+      })
+    }
+  }, [cmsData?.aboutUs])
+
+  const handleAboutImageUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('image', file)
+
+    try {
+      setAboutUploadingImg(true)
+      const res = await homeCmsService.uploadImage(formData)
+      if (res?.path) {
+        setAboutForm((prev) => ({ ...prev, portraitImage: res.path }))
+        notify.success('Portrait image uploaded!')
+      }
+    } catch (err) {
+      console.error(err)
+      notify.error('Failed to upload image')
+    } finally {
+      setAboutUploadingImg(false)
+    }
+  }
+
+  const handleAddWhyChooseItem = () => {
+    const newItem = {
+      id: 'wc_' + Date.now(),
+      title: '',
+      description: '',
+    }
+    setAboutForm((prev) => ({
+      ...prev,
+      whyChooseItems: [...(prev.whyChooseItems || []), newItem],
+    }))
+  }
+
+  const handleUpdateWhyChooseItem = (idx, field, value) => {
+    setAboutForm((prev) => {
+      const items = [...(prev.whyChooseItems || [])]
+      items[idx] = { ...items[idx], [field]: value }
+      return { ...prev, whyChooseItems: items }
+    })
+  }
+
+  const handleRemoveWhyChooseItem = (idx) => {
+    setAboutForm((prev) => {
+      const items = (prev.whyChooseItems || []).filter((_, i) => i !== idx)
+      return { ...prev, whyChooseItems: items }
+    })
+  }
+
+  const handleSaveAboutUs = async () => {
+    try {
+      setAboutSaving(true)
+      await updateAboutUs(aboutForm)
+      notify.success('About Us page updated and live on customer side!')
+      showSaved('About Us page saved successfully!')
+    } catch (err) {
+      console.error(err)
+      notify.error('Failed to save About Us changes')
+    } finally {
+      setAboutSaving(false)
+    }
+  }
+
   const showSaved = (msg) => {
     setSaveSuccessMsg(msg)
     setTimeout(() => setSaveSuccessMsg(''), 3000)
@@ -759,6 +867,19 @@ export default function AdminHomeCMS() {
           }`}
         >
           <span>Footer Policy Pages (3)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('about')}
+          className={`py-3 px-4 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            activeTab === 'about'
+              ? 'border-[#6D021B] text-[#6D021B] bg-white font-bold'
+              : 'border-transparent text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          <Info className="w-3.5 h-3.5 text-[#6D021B]" />
+          <span>About Us Page</span>
         </button>
       </div>
 
@@ -2260,6 +2381,449 @@ export default function AdminHomeCMS() {
                 <Check className="w-4 h-4" />
                 <span>{policySaving ? 'Saving Changes...' : 'Save Policy Changes Live'}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* 6. TAB: ABOUT US PAGE (Editor + Live Preview)                */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {activeTab === 'about' && (
+        <div className="space-y-8">
+          {/* Top Form Card */}
+          <div className="bg-white border border-[#EDE4D8] p-5 sm:p-6 shadow-2xs space-y-6 text-xs">
+            {/* Header & Save Button */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#EDE4D8]">
+              <div>
+                <h2 className="text-base font-bold text-[#1F1713] flex items-center gap-2">
+                  <Info className="w-4 h-4 text-[#6D021B]" />
+                  <span>About Us Page CMS</span>
+                </h2>
+                <p className="text-[11px] text-stone-500 mt-0.5">
+                  Customize the customer-facing About Us page. Real-time live preview is shown below.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveAboutUs}
+                disabled={aboutSaving}
+                className="px-5 py-2.5 bg-[#6D021B] hover:bg-[#560115] text-white font-bold text-xs rounded-none transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-2 self-start sm:self-auto"
+              >
+                <Check className="w-4 h-4 text-secondary" />
+                <span>{aboutSaving ? 'Saving Changes...' : 'Save About Us Page'}</span>
+              </button>
+            </div>
+
+            {/* Section 1: Hero Story Configuration */}
+            <div className="p-4 sm:p-5 bg-[#FAF7F2] border border-[#EDE4D8] space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-sm text-[#1F1713] font-serif">
+                  1. Hero Section (Story & Portrait)
+                </h3>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-secondary bg-[#6D021B] px-2 py-0.5 rounded-none">
+                  Top Hero
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Left 7 cols: Titles & Text */}
+                <div className="lg:col-span-7 space-y-3.5">
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                      Main Heading (Hero Title)
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutForm.heroTitle}
+                      onChange={(e) => setAboutForm({ ...aboutForm, heroTitle: e.target.value })}
+                      placeholder="e.g. Weaving Timeless Elegance & Cultural Heritage"
+                      className="w-full px-3 py-2 bg-white border border-[#EDE4D8] text-xs font-semibold focus:outline-none focus:border-[#6D021B]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                      Story Paragraph 1
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={aboutForm.paragraph1}
+                      onChange={(e) => setAboutForm({ ...aboutForm, paragraph1: e.target.value })}
+                      placeholder="Describe the origin and reverence for Indian handloom..."
+                      className="w-full px-3 py-2 bg-white border border-[#EDE4D8] text-xs leading-relaxed focus:outline-none focus:border-[#6D021B]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">
+                      Story Paragraph 2 (Optional)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={aboutForm.paragraph2}
+                      onChange={(e) => setAboutForm({ ...aboutForm, paragraph2: e.target.value })}
+                      placeholder="Describe the artisan master weavers, warp and weft..."
+                      className="w-full px-3 py-2 bg-white border border-[#EDE4D8] text-xs leading-relaxed focus:outline-none focus:border-[#6D021B]"
+                    />
+                  </div>
+                </div>
+
+                {/* Right 5 cols: Portrait Image Uploader */}
+                <div className="lg:col-span-5 flex flex-col justify-between p-3.5 bg-white border border-[#EDE4D8]">
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-stone-700">
+                      Editorial Portrait Image
+                    </label>
+                    <p className="text-[10px] text-stone-500">
+                      Recommended vertical portrait (ratio ~ 3:4 or 4:5). Upload file or enter image URL.
+                    </p>
+
+                    <label className="flex items-center justify-center gap-2 w-full px-3 py-2 border border-dashed border-[#DEA53B] hover:border-[#6D021B] bg-[#FFFDF9] hover:bg-stone-50 text-stone-800 cursor-pointer transition-colors">
+                      <Upload className="w-3.5 h-3.5 text-[#6D021B]" />
+                      <span className="font-bold text-[11px]">
+                        {aboutUploadingImg ? 'Uploading...' : 'Upload New Portrait Image'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={aboutUploadingImg}
+                        onChange={handleAboutImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+
+                    <div className="pt-1">
+                      <label className="block text-[10px] font-bold text-stone-500 mb-0.5">
+                        Or Image URL / Path:
+                      </label>
+                      <input
+                        type="text"
+                        value={aboutForm.portraitImage}
+                        onChange={(e) => setAboutForm({ ...aboutForm, portraitImage: e.target.value })}
+                        placeholder="e.g. /uploads/cms/about.jpg or https://..."
+                        className="w-full px-2.5 py-1.5 bg-[#FAF7F2] border border-[#EDE4D8] text-[11px] font-mono focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Image Preview Box */}
+                  <div className="mt-3 relative h-40 w-full bg-[#FAF7F2] border border-[#EDE4D8] overflow-hidden flex items-center justify-center">
+                    <img
+                      src={
+                        aboutForm.portraitImage
+                          ? getCmsImageUrl(aboutForm.portraitImage)
+                          : aboutPortraitDefault
+                      }
+                      alt="About Portrait Preview"
+                      className="w-full h-full object-cover object-top"
+                    />
+                    <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[9px] px-1.5 py-0.5">
+                      {aboutForm.portraitImage ? 'Custom' : 'Default Asset'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Vision & Mission */}
+            <div className="p-4 sm:p-5 bg-[#FAF7F2] border border-[#EDE4D8] space-y-4">
+              <h3 className="font-bold text-sm text-[#1F1713] font-serif">
+                2. Our Vision &amp; Mission Cards
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Vision Box */}
+                <div className="p-3.5 bg-white border border-[#EDE4D8] space-y-2.5">
+                  <div className="flex items-center gap-2 text-[#6D021B]">
+                    <Compass className="w-4 h-4" />
+                    <span className="font-bold text-xs uppercase tracking-wider">Vision Section</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">Vision Title</label>
+                    <input
+                      type="text"
+                      value={aboutForm.visionTitle}
+                      onChange={(e) => setAboutForm({ ...aboutForm, visionTitle: e.target.value })}
+                      placeholder="Our Vision"
+                      className="w-full px-3 py-1.5 bg-[#FAF7F2] border border-[#EDE4D8] text-xs font-semibold focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">Vision Text</label>
+                    <textarea
+                      rows={3}
+                      value={aboutForm.visionText}
+                      onChange={(e) => setAboutForm({ ...aboutForm, visionText: e.target.value })}
+                      placeholder="Enter vision statement..."
+                      className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EDE4D8] text-xs leading-relaxed focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                    />
+                  </div>
+                </div>
+
+                {/* Mission Box */}
+                <div className="p-3.5 bg-white border border-[#EDE4D8] space-y-2.5">
+                  <div className="flex items-center gap-2 text-[#6D021B]">
+                    <Target className="w-4 h-4" />
+                    <span className="font-bold text-xs uppercase tracking-wider">Mission Section</span>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">Mission Title</label>
+                    <input
+                      type="text"
+                      value={aboutForm.missionTitle}
+                      onChange={(e) => setAboutForm({ ...aboutForm, missionTitle: e.target.value })}
+                      placeholder="Our Mission"
+                      className="w-full px-3 py-1.5 bg-[#FAF7F2] border border-[#EDE4D8] text-xs font-semibold focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-stone-700 mb-1">Mission Text</label>
+                    <textarea
+                      rows={3}
+                      value={aboutForm.missionText}
+                      onChange={(e) => setAboutForm({ ...aboutForm, missionText: e.target.value })}
+                      placeholder="Enter mission statement..."
+                      className="w-full px-3 py-2 bg-[#FAF7F2] border border-[#EDE4D8] text-xs leading-relaxed focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Why Choose Vastraa */}
+            <div className="p-4 sm:p-5 bg-[#FAF7F2] border border-[#EDE4D8] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-bold text-sm text-[#1F1713] font-serif">
+                    3. Why Choose Vastraa (Feature Cards)
+                  </h3>
+                  <p className="text-[10px] text-stone-500">
+                    Add, edit, or remove the value cards that convince buyers of authenticity and heritage.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddWhyChooseItem}
+                  className="px-3 py-1.5 bg-white hover:bg-stone-50 border border-[#DEA53B] text-[#6D021B] font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-2xs self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5 text-secondary" />
+                  <span>Add Points</span>
+                </button>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1">Section Title</label>
+                <input
+                  type="text"
+                  value={aboutForm.whyChooseTitle}
+                  onChange={(e) => setAboutForm({ ...aboutForm, whyChooseTitle: e.target.value })}
+                  placeholder="Why Choose Vastraa"
+                  className="w-full max-w-md px-3 py-1.5 bg-white border border-[#EDE4D8] text-xs font-semibold focus:outline-none focus:border-[#6D021B]"
+                />
+              </div>
+
+              {/* Cards List */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pt-2">
+                {(aboutForm.whyChooseItems || []).map((item, idx) => (
+                  <div
+                    key={item.id || idx}
+                    className="p-3.5 bg-white border border-[#EDE4D8] space-y-2 relative group hover:border-[#6D021B] transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveWhyChooseItem(idx)}
+                        className="text-stone-400 hover:text-red-600 transition-colors cursor-pointer p-1"
+                        title="Remove Card"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">Title</label>
+                      <input
+                        type="text"
+                        value={item.title || ''}
+                        onChange={(e) => handleUpdateWhyChooseItem(idx, 'title', e.target.value)}
+                        placeholder="Feature title..."
+                        className="w-full px-2.5 py-1 bg-[#FAF7F2] border border-[#EDE4D8] text-xs font-semibold focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-stone-600 mb-0.5">
+                        Description
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={item.description || ''}
+                        onChange={(e) => handleUpdateWhyChooseItem(idx, 'description', e.target.value)}
+                        placeholder="Feature description..."
+                        className="w-full px-2.5 py-1 bg-[#FAF7F2] border border-[#EDE4D8] text-[11px] leading-relaxed focus:outline-none focus:bg-white focus:border-[#6D021B]"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Save Action */}
+            <div className="pt-4 border-t border-[#EDE4D8] flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleSaveAboutUs}
+                disabled={aboutSaving}
+                className="px-6 py-2.5 bg-[#6D021B] hover:bg-[#560115] text-white font-bold text-xs rounded-none transition-all shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              >
+                <Check className="w-4 h-4 text-secondary" />
+                <span>{aboutSaving ? 'Saving Changes...' : 'Save About Us Page'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* EXACT USER SIDE LIVE PREVIEW (Down below the edit form)       */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          <div className="bg-white border-2 border-[#6D021B]/30 shadow-md overflow-hidden">
+            <div className="px-5 py-3.5 bg-gradient-to-r from-[#6D021B] to-[#450110] text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Eye className="w-4 h-4 text-secondary" />
+                <span className="font-bold text-xs tracking-wider uppercase">
+                  Live Preview: Customer-Facing About Us Page
+                </span>
+              </div>
+              <span className="text-[11px] bg-secondary/20 text-secondary border border-secondary/40 px-2 py-0.5 font-semibold">
+                Instant Real-time Reflection
+              </span>
+            </div>
+
+            {/* Container mirroring user-side About.jsx layout */}
+            <div className="w-full bg-[#FAF7F2] p-4 sm:p-8 lg:p-12 font-sans border-t border-[#EDE4D8]">
+              <div className="max-w-6xl mx-auto space-y-12">
+                {/* 1. Preview Hero Section */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
+                  <div className="lg:col-span-7 flex flex-col justify-center">
+                    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-primary tracking-tight font-serif leading-[1.2] mb-3">
+                      {aboutForm.heroTitle || 'Weaving Timeless Elegance & Cultural Heritage'}
+                    </h1>
+                    <div className="space-y-3 text-xs sm:text-sm lg:text-base text-[#5C4A3E] leading-relaxed">
+                      <p>{aboutForm.paragraph1 || 'Founding story...'}</p>
+                      {aboutForm.paragraph2 && <p>{aboutForm.paragraph2}</p>}
+                    </div>
+                  </div>
+
+                  <div className="lg:col-span-5 relative">
+                    <div className="relative mx-auto max-w-md lg:max-w-none">
+                      <div className="absolute -inset-2.5 rounded-none border-2 border-secondary/35 -rotate-1 hidden sm:block pointer-events-none" />
+                      <div className="relative rounded-none overflow-hidden border border-[#EDE4D8] shadow-md bg-white">
+                        <img
+                          src={
+                            aboutForm.portraitImage
+                              ? getCmsImageUrl(aboutForm.portraitImage)
+                              : aboutPortraitDefault
+                          }
+                          alt="Vastraa Master Handloom Heritage Saree"
+                          className="w-full h-[260px] sm:h-[320px] lg:h-[360px] object-cover object-top hover:scale-103 transition-transform duration-700"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Preview Vision & Mission (Left) + Why Choose Vastraa (Right) in Same Row with Bullets */}
+                <div className="pt-2">
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+
+                    {/* Left Column (6 cols): Our Vision & Mission */}
+                    <div className="lg:col-span-6 flex flex-col justify-start">
+                      <div className="mb-4 sm:mb-5 border-b border-[#EDE4D8] pb-3">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary block mb-1">
+                          Purpose &amp; Direction
+                        </span>
+                        <h2 className="text-xl sm:text-2xl font-bold text-primary font-serif">
+                          Our Vision &amp; Mission
+                        </h2>
+                      </div>
+
+                      <div className="space-y-4">
+                        {/* Vision Bullet Block */}
+                        <div className="flex items-start gap-3 group">
+                          <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 group-hover:scale-125 transition-transform" />
+                          <div className="flex-1">
+                            <h3 className="text-base sm:text-lg font-bold text-primary font-serif mb-1">
+                              {aboutForm.visionTitle || 'Our Vision'}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-[#5C4A3E] leading-relaxed">
+                              {aboutForm.visionText || 'Vision statement and forward direction...'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Mission Bullet Block */}
+                        <div className="flex items-start gap-3 group pt-1">
+                          <span className="w-2 h-2 rounded-full bg-primary mt-2 shrink-0 group-hover:scale-125 transition-transform" />
+                          <div className="flex-1">
+                            <h3 className="text-base sm:text-lg font-bold text-primary font-serif mb-1">
+                              {aboutForm.missionTitle || 'Our Mission'}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-[#5C4A3E] leading-relaxed">
+                              {aboutForm.missionText || 'Mission statement and artisan dedication...'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right Column (6 cols): Why Choose Vastraa */}
+                    <div className="lg:col-span-6 flex flex-col justify-start">
+                      <div className="mb-4 sm:mb-5 border-b border-[#EDE4D8] pb-3">
+                        <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary block mb-1">
+                          Purity &amp; Trust
+                        </span>
+                        <h2 className="text-xl sm:text-2xl font-bold text-primary font-serif">
+                          {aboutForm.whyChooseTitle || 'Why Choose Vastraa'}
+                        </h2>
+                      </div>
+
+                      <div className="space-y-4">
+                        {(aboutForm.whyChooseItems && aboutForm.whyChooseItems.length > 0
+                          ? aboutForm.whyChooseItems
+                          : [
+                              {
+                                title: 'Silk Mark Certified Purity',
+                                description: 'Every saree carries authentic purity accreditation...',
+                              },
+                              {
+                                title: 'Generational Master Weavers',
+                                description: 'Hand-loomed in authentic textile capitals...',
+                              },
+                              {
+                                title: 'Real Zari & Intricate Motifs',
+                                description: 'Embellished with pure zari and heritage bootas...',
+                              },
+                            ]
+                        ).map((feat, idx) => (
+                          <div key={feat.id || idx} className="flex items-start gap-3 group">
+                            <span className="w-2 h-2 rounded-full bg-secondary mt-2 shrink-0 group-hover:scale-125 transition-transform" />
+                            <div className="flex-1">
+                              <h4 className="text-sm sm:text-base font-bold text-[#1F1713] font-serif mb-0.5 group-hover:text-primary transition-colors">
+                                {feat.title}
+                              </h4>
+                              <p className="text-xs sm:text-sm text-[#6B5E55] leading-relaxed">
+                                {feat.description}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

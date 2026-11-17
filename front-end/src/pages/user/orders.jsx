@@ -16,6 +16,8 @@ export default function Orders() {
   const [filter, setFilter] = useState('All')
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const pageSize = 7 // Show exactly 7 orders per page as requested
 
   // Protect Orders: If not logged in, friendly redirect to login
   useEffect(() => {
@@ -24,10 +26,16 @@ export default function Orders() {
     }
   }, [isAuthenticated, navigate])
 
+  // Reset to first page when changing filter tabs
+  const handleFilterChange = (st) => {
+    setFilter(st)
+    setCurrentPage(1)
+  }
+
   // Fetch real customer orders from backend MongoDB
   const fetchMyOrders = () => {
     if (!token) return
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+    const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
     fetch(`${API_BASE}/orders/my-orders`, {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -69,6 +77,19 @@ export default function Orders() {
     return (order.status || '').toLowerCase() === filter.toLowerCase()
   })
 
+  // Pagination calculation
+  const totalOrders = filteredOrders.length
+  const totalPages = Math.ceil(totalOrders / pageSize) || 1
+  const startIndex = (currentPage - 1) * pageSize
+  const paginatedOrders = filteredOrders.slice(startIndex, startIndex + pageSize)
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage)
+      window.scrollTo({ top: 120, behavior: 'smooth' })
+    }
+  }
+
   const getStatusBadgeStyle = (status) => {
     switch ((status || '').toLowerCase()) {
       case 'delivered':
@@ -100,9 +121,7 @@ export default function Orders() {
                 <h1 className="font-normal text-xl sm:text-2xl font-bold text-[#1F1713]">
                   My Orders
                 </h1>
-                <p className="text-xs text-stone-500 mt-0.5">
-                  View and track all your authentic handloom orders
-                </p>
+
               </div>
 
               <Link
@@ -122,12 +141,11 @@ export default function Orders() {
                 <button
                   key={st}
                   type="button"
-                  onClick={() => setFilter(st)}
-                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors cursor-pointer shrink-0 ${
-                    filter === st
+                  onClick={() => handleFilterChange(st)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-full border transition-colors cursor-pointer shrink-0 ${filter === st
                       ? 'bg-[#6D021B] text-white border-[#6D021B]'
                       : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'
-                  }`}
+                    }`}
                 >
                   {st}
                 </button>
@@ -138,8 +156,8 @@ export default function Orders() {
             <div className="space-y-4 sm:space-y-5">
               {loading ? (
                 <div className="py-16 text-center">
-                  <div className="w-8 h-8 border-3 border-[#6D021B]/20 border-t-[#6D021B] rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-xs text-stone-500">Loading your orders...</p>
+                  <div className="w-8 h-8 border-2 border-[#6D021B]/20 border-t-[#6D021B] rounded-full animate-spin mx-auto mb-2.5" />
+                  <p className="text-xs text-stone-500 font-medium">Loading your orders...</p>
                 </div>
               ) : filteredOrders.length === 0 ? (
                 <div className="bg-[#FAF7F2] rounded-none-3xl border border-[#EDE4D8] p-12 text-center">
@@ -155,7 +173,7 @@ export default function Orders() {
                   </Link>
                 </div>
               ) : (
-                filteredOrders.map((order) => {
+                paginatedOrders.map((order) => {
                   const firstItem = order.items?.[0]
                   const itemsCount = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || order.items?.length || 1
                   const totalAmount = order.pricing?.finalTotal || 0
@@ -235,7 +253,7 @@ export default function Orders() {
                           </Link>
 
                           {/* Amazon-style Return Status / Return Button */}
-                          
+
 
                           {hasReturnStatus && (
                             <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-purple-800 bg-purple-50 px-2.5 py-0.5">
@@ -263,6 +281,63 @@ export default function Orders() {
                 })
               )}
             </div>
+
+            {/* Pagination Controls (7 orders per page) */}
+            {!loading && totalPages > 1 && (
+              <div className="mt-8 pt-5 border-t border-[#EDE4D8] flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-xs text-stone-500 font-medium">
+                  Showing <span className="font-bold text-stone-800">{startIndex + 1}</span>–
+                  <span className="font-bold text-stone-800">
+                    {Math.min(startIndex + pageSize, totalOrders)}
+                  </span> of <span className="font-bold text-stone-800">{totalOrders}</span> orders
+                </p>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${currentPage === 1
+                        ? 'text-stone-300 border-stone-200 cursor-not-allowed bg-stone-50'
+                        : 'text-stone-700 border-stone-300 bg-white hover:border-[#6D021B] hover:text-[#6D021B] cursor-pointer shadow-2xs'
+                      }`}
+                  >
+                    Previous
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => {
+                      const isActive = num === currentPage
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => handlePageChange(num)}
+                          className={`w-8 h-8 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center border ${isActive
+                              ? 'bg-[#6D021B] text-white border-[#6D021B] shadow-xs'
+                              : 'bg-white text-stone-700 border-stone-200 hover:border-[#6D021B] hover:text-[#6D021B]'
+                            }`}
+                        >
+                          {num}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${currentPage === totalPages
+                        ? 'text-stone-300 border-stone-200 cursor-not-allowed bg-stone-50'
+                        : 'text-stone-700 border-stone-300 bg-white hover:border-[#6D021B] hover:text-[#6D021B] cursor-pointer shadow-2xs'
+                      }`}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -48,6 +48,21 @@ const variantSchema = new mongoose.Schema(
       min: [1, 'Low stock threshold must be at least 1'],
       default: 2,
     },
+    price: {
+      type: Number,
+      min: [0, 'Price must be greater than or equal to 0'],
+      default: 0,
+    },
+    originalPrice: {
+      type: Number,
+      min: [0, 'Original price cannot be negative'],
+      default: 0,
+    },
+    status: {
+      type: String,
+      enum: ['Active', 'Draft', 'Out of Stock'],
+      default: 'Active',
+    },
   },
   { _id: true }
 )

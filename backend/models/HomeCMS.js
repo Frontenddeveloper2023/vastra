@@ -77,6 +77,79 @@ const policyPageSchema = new mongoose.Schema({
   points: [policyPointSchema],
 })
 
+// 7. About Us Page Sub-schema
+const whyChooseItemSchema = new mongoose.Schema({
+  id: { type: String },
+  title: { type: String, default: '' },
+  description: { type: String, default: '' },
+})
+
+const aboutUsSchema = new mongoose.Schema({
+  heroTitle: {
+    type: String,
+    default: 'Weaving Timeless Elegance & Cultural Heritage',
+  },
+  paragraph1: {
+    type: String,
+    default:
+      'Founded on an enduring reverence for India’s rich handloom traditions, Vastraa is a sanctuary of heirloom textiles. From the sacred ghats of Varanasi to the temple town looms of Kanchipuram, every saree in our curation is an ode to patience, dexterity, and royal poise.',
+  },
+  paragraph2: {
+    type: String,
+    default:
+      'We believe that a saree is more than six yards of fabric—it is living history, woven rhythmically by generational master artisans who breathe soul into every warp and weft. By uniting age-old motifs with contemporary drape styling, we craft pieces destined to become treasured family heirlooms.',
+  },
+  portraitImage: {
+    type: String,
+    default: '',
+  },
+  visionTitle: {
+    type: String,
+    default: 'Our Vision',
+  },
+  visionText: {
+    type: String,
+    default:
+      'To become the world’s most trusted ambassador of Indian textile art—bridging historic handloom clusters with modern haute couture, while safeguarding the priceless heritage of traditional master weavers for future generations.',
+  },
+  missionTitle: {
+    type: String,
+    default: 'Our Mission',
+  },
+  missionText: {
+    type: String,
+    default:
+      'To deliver authentic, heirloom-quality sarees crafted from 100% certified pure silks through transparent artisan patronage, fair-trade pricing, and bespoke care that celebrates every milestone in a woman’s life.',
+  },
+  whyChooseTitle: {
+    type: String,
+    default: 'Why Choose Vastraa',
+  },
+  whyChooseItems: {
+    type: [whyChooseItemSchema],
+    default: () => [
+      {
+        id: 'feat-1',
+        title: 'Silk Mark Certified Purity',
+        description:
+          'Every saree carries authentic purity accreditation, guaranteeing 100% natural katan, mulberry, and tussar silks without synthetic blends.',
+      },
+      {
+        id: 'feat-2',
+        title: 'Generational Master Weavers',
+        description:
+          'Hand-loomed in authentic textile capitals—Banaras, Kanchipuram, Chanderi, and Paithan—preserving techniques passed down through centuries.',
+      },
+      {
+        id: 'feat-3',
+        title: 'Real Zari & Intricate Motifs',
+        description:
+          'Embellished with pure zari, heritage kadwa bootas, traditional meenakari, and timeless temple borders that endure for generations.',
+      },
+    ],
+  },
+})
+
 // Master HomeCMS Schema
 const homeCMSSchema = new mongoose.Schema(
   {
@@ -126,6 +199,10 @@ const homeCMSSchema = new mongoose.Schema(
           { title: 'Cookies & Preferences', description: 'We use minimal cookies to remember items in your shopping bag and maintain your session securely. You can manage or clear cookie preferences in your browser at any time.' },
         ],
       }),
+    },
+    aboutUs: {
+      type: aboutUsSchema,
+      default: () => ({}),
     },
   },
   { timestamps: true }

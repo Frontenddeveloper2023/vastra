@@ -366,4 +366,79 @@ export const getOrderCancellationEmailTemplate = ({ customerName, orderId, reaso
   })
 }
 
+/**
+ * 6. Customer Contact & Inquiry Message Email Template (Dispatched to Admin Email)
+ */
+export const getContactInquiryEmailTemplate = ({ name, email, phone, subject, message, date }) => {
+  const content = `
+    <div style="padding:4px 0 16px 0;">
+      <h2 class="header-title" style="font-family:Georgia, serif; font-size:22px; color:#1F1713; font-weight:700; margin:0 0 10px 0; letter-spacing:-0.2px;">
+        New Customer Inquiry Received
+      </h2>
+      <p style="font-size:13px; color:#5A4A41; line-height:1.6; margin:0 0 20px 0;">
+        A customer has submitted a message via the Vastraa Contact page. Details are provided below:
+      </p>
+
+      <!-- Customer Details Card -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAF7F2; border:1px solid #EDE4D8; border-radius:8px; margin-bottom:20px;">
+        <tr>
+          <td style="padding:16px 18px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="padding:4px 0; font-size:12px; color:#78665A; width:110px;"><strong>Customer:</strong></td>
+                <td style="padding:4px 0; font-size:12.5px; color:#1F1713; font-weight:600;">${name}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0; font-size:12px; color:#78665A;"><strong>Email Address:</strong></td>
+                <td style="padding:4px 0; font-size:12.5px; color:#6D021B; font-weight:600;"><a href="mailto:${email}" style="color:#6D021B; text-decoration:underline;">${email}</a></td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0; font-size:12px; color:#78665A;"><strong>Phone Number:</strong></td>
+                <td style="padding:4px 0; font-size:12.5px; color:#1F1713;">${phone || 'Not provided'}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0; font-size:12px; color:#78665A;"><strong>Subject:</strong></td>
+                <td style="padding:4px 0; font-size:12.5px; color:#1F1713; font-weight:600;">${subject || 'General Inquiry'}</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0; font-size:12px; color:#78665A;"><strong>Received At:</strong></td>
+                <td style="padding:4px 0; font-size:11.5px; color:#78665A;">${date || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Message Card -->
+      <div style="background-color:#FFFFFF; border:1.5px solid #DEA53B; border-radius:8px; padding:18px 20px; margin-bottom:20px;">
+        <span style="font-size:10.5px; font-weight:800; text-transform:uppercase; color:#6D021B; letter-spacing:1px; display:block; margin-bottom:8px;">
+          Customer Message:
+        </span>
+        <p style="margin:0; font-size:13.5px; color:#2B1E19; line-height:1.7; white-space:pre-wrap; font-family:inherit;">
+${message}
+        </p>
+      </div>
+
+      <!-- Quick Reply CTA -->
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:20px;">
+        <tr>
+          <td align="center">
+            <a href="mailto:${email}?subject=Re: ${encodeURIComponent(subject || 'Your inquiry at Vastraa')}" style="background-color:#6D021B; color:#FFFFFF; font-size:12.5px; font-weight:700; text-decoration:none; padding:12px 28px; border-radius:6px; display:inline-block; letter-spacing:0.5px;">
+              Reply directly to Customer &rarr;
+            </a>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `
+
+  return renderEmailShell({
+    preheader: `New customer inquiry from ${name} (${email}): "${subject || 'General inquiry'}"`,
+    badge: 'CUSTOMER INQUIRY',
+    title: `Inquiry from ${name} - Vastraa Silks`,
+    contentHtml: content,
+  })
+}
+
+
 

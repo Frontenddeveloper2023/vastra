@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useCart } from '../../context/CartContext'
 import productService from '../../services/productService'
 import { getCmsImageUrl } from '../../utils/imageHelper'
+import { getSocket } from '../../services/socket'
 
 const PRODUCTS_PER_PAGE = 12
 
@@ -25,20 +26,23 @@ export default function Collections() {
   const [currentPage, setCurrentPage] = useState(1)
 
   // Fetch real products from MongoDB backend
-  useEffect(() => {
-    let isMounted = true
-    setLoading(true)
+  const loadProducts = useCallback((showSpinner = false) => {
+    if (showSpinner) setLoading(true)
     productService
-      .getAll({ limit: 200, status: 'Active' })
+      .getAll({ limit: 200 })
       .then((data) => {
-        if (!isMounted) return
         const list = Array.isArray(data) ? data : data?.products || []
-        // Normalize products: map _id to id and ensure clean price/image
+        // Normalize products: map _id to id and compute stock and variant attributes
         const normalized = list.map((p) => {
           const mainImg = p.image || p.variants?.[0]?.image || p.variants?.[0]?.images?.[0] || ''
           const mainFabric = p.variants?.[0]?.material || p.fabric || 'Pure Silk'
           const mainColor = p.variants?.[0]?.color || p.color || ''
           const mainWeight = p.variants?.[0]?.weight !== undefined ? p.variants[0].weight : (p.weight || 850)
+          const computedStock = p.totalStock !== undefined
+            ? Number(p.totalStock)
+            : (p.variants?.reduce((sum, v) => sum + (Number(v.stock) || 0), 0) ?? Number(p.stock || 0))
+          const isOutOfStock = p.status === 'Out of Stock' || computedStock <= 0
+
           return {
             ...p,
             id: p._id || p.id,
@@ -48,6 +52,8 @@ export default function Collections() {
             weight: Number(mainWeight) || 850,
             originalPrice: p.originalPrice || p.price || 0,
             price: p.price || 0,
+            totalStock: computedStock,
+            isOutOfStock,
           }
         })
         setProducts(normalized)
@@ -56,12 +62,27 @@ export default function Collections() {
         console.error('Failed to load products from database:', err)
       })
       .finally(() => {
-        if (isMounted) setLoading(false)
+        if (showSpinner) setLoading(false)
       })
-    return () => {
-      isMounted = false
-    }
   }, [])
+
+  useEffect(() => {
+    loadProducts(true)
+
+    // Listen to real-time stock updates so Out-of-Stock state reflects instantly
+    const socket = getSocket()
+    const handleStockUpdate = () => {
+      loadProducts(false)
+    }
+
+    socket.on('stock:updated', handleStockUpdate)
+    socket.on('order:new', handleStockUpdate)
+
+    return () => {
+      socket.off('stock:updated', handleStockUpdate)
+      socket.off('order:new', handleStockUpdate)
+    }
+  }, [loadProducts])
 
   // Sync category with URL when searchParams change (e.g. from Navbar dropdown navigation)
   useEffect(() => {
@@ -169,6 +190,28 @@ export default function Collections() {
     setCurrentPage(pageNum)
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
   }
+
+  // Generate pagination items showing only current window and ellipses (e.g., 1, 2, 3 ... 11)
+  const paginationItems = useMemo(() => {
+    if (totalPages <= 5) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1)
+    }
+
+    const pages = []
+
+    if (currentPage <= 2) {
+      // Near start: 1, 2, 3, '...', totalPages
+      pages.push(1, 2, 3, '...', totalPages)
+    } else if (currentPage >= totalPages - 1) {
+      // Near end: 1, '...', totalPages - 2, totalPages - 1, totalPages
+      pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages)
+    } else {
+      // In middle: 1, '...', currentPage, '...', totalPages (or currentPage - 1, currentPage, currentPage + 1)
+      pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages)
+    }
+
+    return pages
+  }, [totalPages, currentPage])
 
   const handleAddToCart = (product, e) => {
     e.preventDefault()
@@ -427,16 +470,22 @@ export default function Collections() {
                               src={getCmsImageUrl(product.image)}
                               alt={product.title}
                               loading="lazy"
-                              className="h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105"
+                              className={`h-full w-full object-cover object-center transition-transform duration-700 ease-out group-hover:scale-105 ${
+                                product.isOutOfStock ? 'grayscale opacity-75' : ''
+                              }`}
                             />
                           </Link>
 
-                          {/* Badge if available */}
-                          {product.badge && (
+                          {/* Out of Stock Overlay / Badge (Amazon style) */}
+                          {product.isOutOfStock ? (
+                            <div className="absolute inset-x-0 bottom-0 py-1.5 px-2 bg-stone-900/90 backdrop-blur-xs text-white text-center text-[10px] sm:text-xs font-bold tracking-wider uppercase z-20">
+                              Currently Unavailable
+                            </div>
+                          ) : product.badge ? (
                             <span className="absolute top-2 left-2 z-10 bg-primary text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-none uppercase tracking-wider">
                               {product.badge}
                             </span>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* Product Content Details */}
@@ -464,29 +513,50 @@ export default function Collections() {
                                 </span>
                               )}
                             </div>
+
+                            {/* Stock Availability Text - Amazon style */}
+                            {product.isOutOfStock ? (
+                              <p className="mt-1 text-[11px] font-bold text-red-600">
+                                Out of Stock
+                              </p>
+                            ) : product.totalStock > 0 && product.totalStock <= 3 ? (
+                              <p className="mt-1 text-[11px] font-semibold text-[#B45309]">
+                                Only {product.totalStock} left in stock - order soon.
+                              </p>
+                            ) : null}
                           </div>
 
-                          {/* Full-width "+ Add to Cart" Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => handleAddToCart(product, e)}
-                            className={`mt-2.5 sm:mt-3 w-full py-2 sm:py-2.5 lg:py-3 px-2 sm:px-4 rounded-none-lg sm:rounded-none-xl text-[11px] sm:text-xs lg:text-sm font-medium tracking-wide transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer shadow-2xs active:scale-98 ${
-                              isAdded
-                                ? 'bg-secondary text-primary-dark font-semibold'
-                                : 'bg-[#F4ECE1] text-[#2B1F19] hover:bg-primary hover:text-white'
-                            }`}
-                          >
-                            {isAdded ? (
-                              <>
-                                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                                </svg>
-                                <span>Added</span>
-                              </>
-                            ) : (
-                              <span>+ Add to Cart</span>
-                            )}
-                          </button>
+                          {/* Full-width Action Button */}
+                          {product.isOutOfStock ? (
+                            <button
+                              type="button"
+                              disabled
+                              className="mt-2.5 sm:mt-3 w-full py-2 sm:py-2.5 lg:py-3 px-2 sm:px-4 rounded-none-lg sm:rounded-none-xl text-[11px] sm:text-xs lg:text-sm font-semibold tracking-wide bg-stone-200 text-stone-500 cursor-not-allowed flex items-center justify-center gap-1 shadow-none"
+                            >
+                              <span>Out of Stock</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => handleAddToCart(product, e)}
+                              className={`mt-2.5 sm:mt-3 w-full py-2 sm:py-2.5 lg:py-3 px-2 sm:px-4 rounded-none-lg sm:rounded-none-xl text-[11px] sm:text-xs lg:text-sm font-medium tracking-wide transition-all duration-200 flex items-center justify-center gap-1 cursor-pointer shadow-2xs active:scale-98 ${
+                                isAdded
+                                  ? 'bg-secondary text-primary-dark font-semibold'
+                                  : 'bg-[#F4ECE1] text-[#2B1F19] hover:bg-primary hover:text-white'
+                              }`}
+                            >
+                              {isAdded ? (
+                                <>
+                                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                  </svg>
+                                  <span>Added</span>
+                                </>
+                              ) : (
+                                <span>+ Add to Cart</span>
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
                     )
@@ -495,34 +565,55 @@ export default function Collections() {
 
                 {/* ─── Pagination Controls ─── */}
                 {totalPages > 1 && (
-                  <div className="mt-10 flex items-center justify-center gap-2">
+                  <div className="mt-10 flex items-center justify-center gap-1 sm:gap-2 flex-wrap select-none">
                     <button
                       type="button"
                       disabled={currentPage === 1}
                       onClick={() => handlePageChange(currentPage - 1)}
-                      className="px-3.5 py-2 text-xs font-bold rounded-none-xl border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-lg border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
                     >
                       Previous
                     </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => handlePageChange(p)}
-                        className={`w-9 h-9 text-xs font-bold rounded-none-xl border transition-colors ${
-                          currentPage === p
-                            ? 'bg-[#6D021B] text-white border-[#6D021B]'
-                            : 'bg-white text-stone-700 border-[#EDE4D8] hover:bg-[#FAF7F2]'
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
+
+                    <div className="flex items-center gap-1 sm:gap-1.5">
+                      {paginationItems.map((item, idx) => {
+                        if (item === '...') {
+                          return (
+                            <span
+                              key={`dots-${idx}`}
+                              className="w-7 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-xs font-bold text-stone-400 select-none tracking-widest"
+                            >
+                              ...
+                            </span>
+                          )
+                        }
+
+                        const p = Number(item)
+                        const isActive = currentPage === p
+
+                        return (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => handlePageChange(p)}
+                            aria-current={isActive ? 'page' : undefined}
+                            className={`w-7 h-8 sm:w-9 sm:h-9 text-xs font-bold rounded-lg border transition-all cursor-pointer shadow-2xs ${
+                              isActive
+                                ? 'bg-[#6D021B] text-white border-[#6D021B] shadow-sm'
+                                : 'bg-white text-stone-700 border-[#EDE4D8] hover:bg-[#FAF7F2] hover:border-[#6D021B]/40'
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        )
+                      })}
+                    </div>
+
                     <button
                       type="button"
                       disabled={currentPage === totalPages}
                       onClick={() => handlePageChange(currentPage + 1)}
-                      className="px-3.5 py-2 text-xs font-bold rounded-none-xl border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-2.5 sm:px-3.5 py-1.5 sm:py-2 text-xs font-bold rounded-lg border border-[#EDE4D8] bg-white text-stone-700 hover:bg-[#FAF7F2] disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
                     >
                       Next
                     </button>

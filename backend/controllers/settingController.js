@@ -14,6 +14,52 @@ const DEFAULT_CITIES = [
 ]
 
 /**
+ * Helper to resolve Google Maps short URLs or place links into an embeddable URL
+ */
+const resolveGoogleMapsUrl = async (inputUrl) => {
+  if (!inputUrl || typeof inputUrl !== 'string') return inputUrl
+  const trimmed = inputUrl.trim()
+
+  // 1. If it's already an embed link (e.g. includes /maps/embed or output=embed)
+  if (trimmed.includes('/maps/embed') || trimmed.includes('output=embed')) {
+    return trimmed
+  }
+
+  // 2. If it's a short URL (maps.app.goo.gl or goo.gl/maps)
+  if (trimmed.includes('maps.app.goo.gl') || trimmed.includes('goo.gl/maps')) {
+    try {
+      const response = await fetch(trimmed, { redirect: 'manual' })
+      const redirectUrl = response.headers.get('location') || ''
+      if (redirectUrl) {
+        // Check for coordinates like 12.921859, 80.092649
+        const coords = redirectUrl.match(/(-?\d+\.\d+),\s*\+?(-?\d+\.\d+)/)
+        if (coords) {
+          return `https://maps.google.com/maps?q=${coords[1]},${coords[2]}&t=&z=16&ie=UTF8&iwloc=&output=embed`
+        }
+        // Check for place name like /place/Jayam+Web+Solutions+Pvt+Ltd/@12.9216708,80.0895167
+        const placeMatch = redirectUrl.match(/\/place\/([^/@]+)/)
+        if (placeMatch) {
+          const placeName = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '))
+          return `https://maps.google.com/maps?q=${encodeURIComponent(placeName)}&t=&z=16&ie=UTF8&iwloc=&output=embed`
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resolve Google Maps short URL:', err)
+    }
+  }
+
+  // 3. Check for standard coordinates directly in URL or query
+  const directCoords = trimmed.match(/(-?\d+\.\d+),\s*\+?(-?\d+\.\d+)/)
+  if (directCoords) {
+    return `https://maps.google.com/maps?q=${directCoords[1]},${directCoords[2]}&t=&z=16&ie=UTF8&iwloc=&output=embed`
+  }
+
+  // 4. Default: convert query/place directly to Google Maps embed
+  const clean = trimmed.replace(/^https?:\/\/(www\.)?(google\.com\/maps\/?\??(q=)?)/i, '')
+  return `https://maps.google.com/maps?q=${encodeURIComponent(clean)}&t=&z=16&ie=UTF8&iwloc=&output=embed`
+}
+
+/**
  * Helper to ensure a settings singleton document exists in DB
  */
 const getOrCreateSettings = async () => {
@@ -78,15 +124,21 @@ export const updateSettings = async (req, res) => {
 
     // Merge updates into document
     if (updates.storeName !== undefined) current.storeName = updates.storeName
+    if (updates.logoUrl !== undefined) current.logoUrl = updates.logoUrl
     if (updates.contactEmail !== undefined) current.contactEmail = updates.contactEmail
     if (updates.supportPhone !== undefined) current.supportPhone = updates.supportPhone
     if (updates.atelierAddress !== undefined) current.atelierAddress = updates.atelierAddress
-    if (updates.googleMapsUrl !== undefined) current.googleMapsUrl = updates.googleMapsUrl
+    if (updates.googleMapsUrl !== undefined) {
+      current.googleMapsUrl = await resolveGoogleMapsUrl(updates.googleMapsUrl)
+    }
 
     if (updates.instagram !== undefined) current.instagram = updates.instagram
     if (updates.facebook !== undefined) current.facebook = updates.facebook
     if (updates.twitter !== undefined) current.twitter = updates.twitter
     if (updates.youtube !== undefined) current.youtube = updates.youtube
+    if (updates.navAnnouncement !== undefined) current.navAnnouncement = updates.navAnnouncement
+    if (updates.whatsappMessage !== undefined) current.whatsappMessage = updates.whatsappMessage
+    if (updates.signatureUrl !== undefined) current.signatureUrl = updates.signatureUrl
 
     if (updates.estimatedDays !== undefined) current.estimatedDays = updates.estimatedDays
 
@@ -116,12 +168,21 @@ export const updateSettings = async (req, res) => {
       }
     }
 
+    if (updates.gst) {
+      current.gst = {
+        ...current.gst,
+        ...updates.gst,
+      }
+    }
+
     await current.save()
 
     // ⚡ Emit WebSocket event for instant global update across all open user pages
     emitEvent('settings:updated', {
       settings: current,
+      shipping: current.shipping,
       returnPolicy: current.returnPolicy,
+      gst: current.gst,
       message: 'Store settings updated',
     })
 

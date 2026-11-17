@@ -16,6 +16,7 @@ export default function CartDrawer() {
     isCartOpen,
     closeCart,
     updateQuantity,
+    getItemMaxStock,
     removeFromCart,
     totalCount,
     subtotal,
@@ -229,41 +230,60 @@ export default function CartDrawer() {
                     </div>
 
                     <div className="mt-2.5 flex items-center justify-between gap-2">
-                      {/* Quantity Stepper */}
-                      <div className="inline-flex items-center rounded-none border border-stone-200 bg-stone-50/70 p-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (item.quantity === 1) {
-                              setItemToDelete(item)
-                            } else {
-                              updateQuantity(itemKey, -1)
-                            }
-                          }}
-                          aria-label="Decrease quantity"
-                          className="w-6 h-6 flex items-center justify-center rounded-none text-stone-600 hover:bg-white hover:text-primary transition-colors cursor-pointer text-xs"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
-                          </svg>
-                        </button>
-                        <span className="w-7 text-center text-xs font-semibold text-stone-800">
-                          {item.quantity}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(itemKey, 1)}
-                          aria-label="Increase quantity"
-                          className="w-6 h-6 flex items-center justify-center rounded-none text-stone-600 hover:bg-white hover:text-primary transition-colors cursor-pointer text-xs"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                          </svg>
-                        </button>
-                      </div>
+                      {/* Quantity Stepper with Max Stock Guard */}
+                      {(() => {
+                        const itemMaxStock = typeof getItemMaxStock === 'function' ? getItemMaxStock(item) : 99
+                        const isMaxReached = itemMaxStock > 0 && item.quantity >= itemMaxStock
 
-                      {/* Buy Only This Product Option */}
-                  
+                        return (
+                          <div className="flex items-center gap-2">
+                            <div className="inline-flex items-center rounded-none border border-stone-200 bg-stone-50/70 p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (item.quantity === 1) {
+                                    setItemToDelete(item)
+                                  } else {
+                                    updateQuantity(itemKey, -1)
+                                  }
+                                }}
+                                aria-label="Decrease quantity"
+                                className="w-6 h-6 flex items-center justify-center rounded-none text-stone-600 hover:bg-white hover:text-primary transition-colors cursor-pointer text-xs"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
+                                </svg>
+                              </button>
+                              <span className="w-7 text-center text-xs font-semibold text-stone-800">
+                                {item.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(itemKey, 1)}
+                                disabled={isMaxReached}
+                                aria-label="Increase quantity"
+                                title={isMaxReached ? `Max stock (${itemMaxStock}) reached` : 'Increase quantity'}
+                                className={`w-6 h-6 flex items-center justify-center rounded-none transition-colors text-xs ${
+                                  isMaxReached
+                                    ? 'text-stone-300 cursor-not-allowed bg-stone-100'
+                                    : 'text-stone-600 hover:bg-white hover:text-primary cursor-pointer'
+                                }`}
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                </svg>
+                              </button>
+                            </div>
+
+                            {/* Max stock warning indicator */}
+                            {isMaxReached && (
+                              <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-none border border-amber-200">
+                                Max {itemMaxStock}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
                     </div>
                   </div>
 

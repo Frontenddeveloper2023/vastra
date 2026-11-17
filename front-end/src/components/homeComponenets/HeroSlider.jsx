@@ -3,56 +3,16 @@ import { Link } from 'react-router-dom'
 import { useHomeCMS } from '../../context/HomeCMSContext'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 
-// Renamed and Curated Desktop Banners (fallback)
-import desktopTravel from '../../../public/slides/slide7.png'
-import desktopWedding from '../../../public/slides/slide6.png'
-import desktopFestival from '../../../public/slides/slide5.png'
-
-// Curated Mobile Portrait Banners (fallback)
-import mobileSlide1 from '../../../public/slides/m3.png'
-import mobileSlide2 from '../../../public/slides/m1.png'
-import mobileSlide3 from '../../../public/slides/m2.png'
-
-const fallbackSlides = [
-  {
-    id: 1,
-    image: desktopTravel,
-    mobileImage: mobileSlide1,
-    title: 'Festival Collection - A Moment of Festive Light & Joy',
-    buttonText: 'SHOP NOW',
-    buttonLink: '/collections',
-    bgColor: '#751B1B',
-  },
-  {
-    id: 2,
-    image: desktopWedding,
-    mobileImage: mobileSlide2,
-    title: 'Wedding & Royal Edit - Saree Timeless Beauty',
-    buttonText: 'SHOP NOW',
-    buttonLink: '/collections',
-    bgColor: '#0A3B28',
-  },
-  {
-    id: 3,
-    image: desktopFestival,
-    mobileImage: mobileSlide3,
-    title: 'Saree & Travel - Destination & Memories',
-    buttonText: 'SHOP NOW',
-    buttonLink: '/collections',
-    bgColor: '#DF9F89',
-  },
-]
-
 export default function HeroSlider() {
-  const { cmsData } = useHomeCMS()
+  const { cmsData, loading } = useHomeCMS()
 
-  // Filter banners from CMS or fall back to defaults
+  // Dynamic slides directly from CMS database
   const slides = useMemo(() => {
     const raw = cmsData?.heroBanners
-    if (Array.isArray(raw) && raw.length > 0) {
-      return raw
+    if (Array.isArray(raw)) {
+      return raw.filter((b) => b && (b.active !== false))
     }
-    return fallbackSlides
+    return []
   }, [cmsData?.heroBanners])
 
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -66,27 +26,75 @@ export default function HeroSlider() {
   }, [slides.length, currentIndex])
 
   const goToSlide = useCallback((index) => {
-    if (isTransitioning) return
+    if (isTransitioning || slides.length === 0) return
     setIsTransitioning(true)
     setCurrentIndex(index)
     setTimeout(() => {
       setIsTransitioning(false)
     }, 600)
-  }, [isTransitioning])
+  }, [isTransitioning, slides.length])
 
   const nextSlide = useCallback(() => {
+    if (slides.length <= 1) return
     goToSlide((currentIndex + 1) % slides.length)
-  }, [currentIndex, goToSlide])
+  }, [currentIndex, goToSlide, slides.length])
 
-  // Auto advance every 6 seconds
+  // Auto advance every 6 seconds if there are multiple slides
   useEffect(() => {
+    if (loading || slides.length <= 1) return
     const timer = setInterval(() => {
       nextSlide()
     }, 6000)
     return () => clearInterval(timer)
-  }, [nextSlide])
+  }, [loading, nextSlide, slides.length])
 
-  const current = slides[currentIndex]
+  // Skeleton Loader while CMS banner data is loading
+  if (loading) {
+    return (
+      <section
+        className="relative w-full overflow-hidden"
+        style={{ paddingTop: 'var(--navbar-height, 46px)' }}
+      >
+        {/* Mobile Skeleton: Full viewport height minus navbars */}
+        <div className="relative w-full block md:hidden overflow-hidden h-[calc(100svh-46px-56px)] max-h-[820px] min-h-[500px] bg-stone-200 animate-pulse">
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+          
+          {/* Skeleton Button Placeholder */}
+          <div className="absolute bottom-12 sm:bottom-14 left-1/2 -translate-x-1/2 w-36 h-10 bg-stone-300 shadow-md" />
+          
+          {/* Skeleton Dots */}
+          <div className="absolute bottom-4 sm:bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-2.5">
+            {[1, 2, 3].map((d) => (
+              <div key={d} className="h-2.5 w-2.5 rounded-full bg-stone-300" />
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop Skeleton: Exact 1024/438 Banner Ratio */}
+        <div className="relative w-full hidden md:block aspect-[1024/438] max-h-[580px] bg-stone-200 overflow-hidden animate-pulse">
+          <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+          
+          {/* Skeleton Button Placeholder */}
+          <div className="absolute bottom-12 md:bottom-14 left-1/2 -translate-x-1/2 w-40 h-11 bg-stone-300 shadow-md" />
+          
+          {/* Skeleton Dots */}
+          <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex items-center gap-4">
+            {[1, 2, 3].map((d) => (
+              <div key={d} className="h-2.5 w-2.5 rounded-full bg-stone-300" />
+            ))}
+          </div>
+        </div>
+      </section>
+    )
+  }
+
+  // If no banners are added by Admin yet, don't render empty broken sliders
+  if (!slides || slides.length === 0) {
+    return null
+  }
+
+  const current = slides[currentIndex] || slides[0]
+
   return (
     <section
       className="relative w-full overflow-hidden pt-[46px] sm:pt-[56px] md:pt-[108px]"
@@ -96,14 +104,15 @@ export default function HeroSlider() {
       <div className="relative w-full block md:hidden select-none overflow-hidden h-[calc(100svh-46px-56px)] max-h-[820px] min-h-[500px] bg-[#E6C6A6]">
         {slides.map((s, idx) => (
           <div
-            key={s.id}
-            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-              }`}
+            key={s._id || s.id || idx}
+            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+            }`}
           >
             {/* Full-bleed portrait image */}
             <img
               src={getCmsImageUrl(s.mobileImage || s.image)}
-              alt={s.title}
+              alt={s.title || 'Vastraa Luxury Banner'}
               className="absolute inset-0 w-full h-full object-cover object-center"
             />
             {/* Bottom Button Overlay */}
@@ -117,36 +126,43 @@ export default function HeroSlider() {
             </div>
           </div>
         ))}
-        {/* Mobile Navigation Dots */}
-        <div className="absolute bottom-4 sm:bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2.5">
-          {slides.map((_, dotIdx) => (
-            <button
-              key={dotIdx}
-              onClick={() => goToSlide(dotIdx)}
-              aria-label={`Slide ${dotIdx + 1}`}
-              className={`h-2.5 w-2.5 cursor-pointer rounded-none-full border transition-all duration-300 ${dotIdx === currentIndex
-                ? 'border-black bg-black'
-                : 'border-black/80 bg-transparent hover:bg-black/40'
+
+        {/* Mobile Navigation Dots (only shown if > 1 slide) */}
+        {slides.length > 1 && (
+          <div className="absolute bottom-4 sm:bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2.5">
+            {slides.map((_, dotIdx) => (
+              <button
+                key={dotIdx}
+                onClick={() => goToSlide(dotIdx)}
+                aria-label={`Slide ${dotIdx + 1}`}
+                className={`h-2.5 w-2.5 cursor-pointer rounded-none-full border transition-all duration-300 ${
+                  dotIdx === currentIndex
+                    ? 'border-black bg-black'
+                    : 'border-black/80 bg-transparent hover:bg-black/40'
                 }`}
-            />
-          ))}
-        </div>
+              />
+            ))}
+          </div>
+        )}
       </div>
+
       {/* ─── 2. DESKTOP SLIDER (>= 768px: Exact 1024x438 Banner Ratio) ─── */}
       <div className="relative w-full hidden md:block select-none aspect-[1024/438] max-h-[580px]">
         {slides.map((s, idx) => (
           <div
-            key={s.id}
-            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
-              }`}
+            key={s._id || s.id || idx}
+            className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${
+              idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
+            }`}
           >
             <img
               src={getCmsImageUrl(s.image)}
-              alt={s.title}
+              alt={s.title || 'Vastraa Luxury Banner'}
               className="h-full w-full object-cover object-center"
             />
           </div>
         ))}
+
         {/* Desktop Button Overlay (Bottom Positioned) */}
         <div className="absolute bottom-12 md:bottom-14 left-1/2 z-20 -translate-x-1/2 flex items-center justify-center">
           <Link
@@ -156,20 +172,24 @@ export default function HeroSlider() {
             {current?.buttonText || 'SHOP NOW'}
           </Link>
         </div>
-        {/* Desktop Navigation Dots */}
-        <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4">
-          {slides.map((_, dotIdx) => (
-            <button
-              key={dotIdx}
-              onClick={() => goToSlide(dotIdx)}
-              aria-label={`Slide ${dotIdx + 1}`}
-              className={`h-[9px] w-[9px] md:h-[10px] md:w-[10px] cursor-pointer rounded-none-full border transition-all duration-300 ${dotIdx === currentIndex
-                ? 'border-black bg-black'
-                : 'border-black/60 bg-transparent hover:bg-black/30'
+
+        {/* Desktop Navigation Dots (only shown if > 1 slide) */}
+        {slides.length > 1 && (
+          <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-4">
+            {slides.map((_, dotIdx) => (
+              <button
+                key={dotIdx}
+                onClick={() => goToSlide(dotIdx)}
+                aria-label={`Slide ${dotIdx + 1}`}
+                className={`h-[9px] w-[9px] md:h-[10px] md:w-[10px] cursor-pointer rounded-none-full border transition-all duration-300 ${
+                  dotIdx === currentIndex
+                    ? 'border-black bg-black'
+                    : 'border-black/60 bg-transparent hover:bg-black/30'
                 }`}
-            />
-          ))}
-        </div>
+              />
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )

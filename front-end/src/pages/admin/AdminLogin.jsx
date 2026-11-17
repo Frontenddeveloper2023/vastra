@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldCheck, Mail, ArrowRight, RotateCw, AlertCircle, CheckCircle2 } from 'lucide-react'
 import notify from '../../utils/toast'
-import vastraaLogo from '../../../public/slides/logo.png'
 import { useAdminAuth } from '../../context/AdminAuthContext'
+import { useSettings } from '../../context/SettingsContext'
+import { getCmsImageUrl } from '../../utils/imageHelper'
 
 export default function AdminLogin() {
   const [step, setStep] = useState(1) // 1: Email, 2: OTP
@@ -15,6 +16,7 @@ export default function AdminLogin() {
   const navigate = useNavigate()
 
   const { requestOtp, verifyOtp, loading, isAuthenticated } = useAdminAuth()
+  const { settings } = useSettings()
 
   // If already authenticated, redirect to admin studio
   useEffect(() => {
@@ -149,8 +151,8 @@ export default function AdminLogin() {
         {/* Brand Emblem */}
         <div className="flex flex-col items-center text-center mb-6">
           <img
-            src={vastraaLogo}
-            alt="Vastraa"
+            src={settings?.logoUrl ? getCmsImageUrl(settings.logoUrl) : `${import.meta.env.BASE_URL || '/'}slides/logo.png`}
+            alt={settings?.storeName || 'Vastraa'}
             className="w-14 h-14 object-cover shadow-xs mb-2.5"
           />
           <h1 className="font-normal text-2xl font-bold tracking-[0.15em] text-[#6D021B] uppercase">

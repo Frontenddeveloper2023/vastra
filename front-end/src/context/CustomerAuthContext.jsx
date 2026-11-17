@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { API_BASE_URL } from '../config/apiConfig'
 
 const CustomerAuthContext = createContext(null)
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 const TOKEN_KEY = 'vastraa_customer_token'
 const USER_KEY = 'vastraa_customer_user'
 

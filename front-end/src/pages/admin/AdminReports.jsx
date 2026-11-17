@@ -30,7 +30,7 @@ export default function AdminReports() {
     setLoading(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const res = await fetch(`${API_BASE}/orders/admin/all?limit=500`, {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -289,7 +289,7 @@ export default function AdminReports() {
 
         {/* Action Download Buttons */}
         <div className="flex items-center gap-2.5 self-start sm:self-auto">
-   
+
 
           <button
             type="button"
@@ -301,7 +301,7 @@ export default function AdminReports() {
             <span>Download Excel ({filteredData.length})</span>
           </button>
 
-      
+
         </div>
       </div>
 
@@ -385,11 +385,10 @@ export default function AdminReports() {
                     setDateRange(p.value)
                     setCurrentPage(1)
                   }}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer transition-colors ${
-                    dateRange === p.value
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-none cursor-pointer transition-colors ${dateRange === p.value
                       ? 'bg-[#6D021B] text-white shadow-2xs'
                       : 'text-stone-600 hover:text-stone-900'
-                  }`}
+                    }`}
                 >
                   {p.label}
                 </button>
@@ -509,7 +508,7 @@ export default function AdminReports() {
                 <tr>
                   <td colSpan="8" className="py-12 text-center text-stone-500">
                     <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-stone-400" />
-                    <p className="font-semibold text-xs">Loading sales reports from database...</p>
+                    <p className="font-semibold text-xs">Loading sales reports...</p>
                   </td>
                 </tr>
               ) : paginatedData.length > 0 ? (
@@ -528,15 +527,14 @@ export default function AdminReports() {
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`inline-block px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-none ${
-                          row.status === 'Delivered'
+                        className={`inline-block px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider border rounded-none ${row.status === 'Delivered'
                             ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                             : row.status === 'Shipped'
-                            ? 'bg-blue-50 text-blue-800 border-blue-200'
-                            : row.status === 'On process'
-                            ? 'bg-amber-50 text-amber-800 border-amber-200'
-                            : 'bg-red-50 text-red-800 border-red-200'
-                        }`}
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : row.status === 'On process'
+                                ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                : 'bg-red-50 text-red-800 border-red-200'
+                          }`}
                       >
                         {row.status}
                       </span>

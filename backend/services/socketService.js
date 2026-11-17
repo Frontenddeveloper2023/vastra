@@ -9,7 +9,7 @@ export const initSocket = (httpServer) => {
         'http://localhost:5173',
         'http://localhost:5174',
         'http://localhost:4173',
-        process.env.CLIENT_URL,
+        process.env.VITE_FRONTEND_URL,
       ].filter(Boolean),
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       credentials: true,

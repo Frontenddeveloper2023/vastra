@@ -5,6 +5,7 @@ import Setting from '../models/Setting.js'
 import { ApiError, ApiResponse, asyncHandler } from '../utils/apiResponse.js'
 import { sendOrderCancellationEmail } from '../services/emailService.js'
 import { emitEvent } from '../services/socketService.js'
+import { generateOrderInvoicePdf } from '../services/invoiceService.js'
 
 // Helper: Generate Unique Order ID (e.g. VAST-2026-XXXXX)
 const generateOrderId = () => {
@@ -58,21 +59,40 @@ export const createOrder = asyncHandler(async (req, res) => {
     if (item.productId) {
       const product = await Product.findById(item.productId)
       if (product) {
-        // Deduct variant stock if variantId is specified
+        let variantDeducted = false
+
+        // 1. Try matching variant by exact variantId
         if (item.variantId && Array.isArray(product.variants)) {
-          const v = product.variants.id(item.variantId)
+          const v = product.variants.id(item.variantId) || product.variants.find((vr) => String(vr._id) === String(item.variantId))
           if (v && v.stock !== undefined) {
             v.stock = Math.max(0, v.stock - (item.quantity || 1))
+            variantDeducted = true
           }
         }
-        // Deduct totalStock based on sum of variants or deducted directly
+
+        // 2. Fallback matching variant by attributes (color, design, material)
+        if (!variantDeducted && Array.isArray(product.variants) && product.variants.length > 0) {
+          const v = product.variants.find((vr) => {
+            const matchColor = item.color ? (vr.color || '').toLowerCase() === item.color.toLowerCase() : true
+            const matchDesign = item.design ? (vr.design || '').toLowerCase() === item.design.toLowerCase() : true
+            const matchMaterial = item.material ? (vr.material || '').toLowerCase() === item.material.toLowerCase() : true
+            return matchColor && matchDesign && matchMaterial
+          }) || product.variants[0] // fallback to first variant
+
+          if (v && v.stock !== undefined) {
+            v.stock = Math.max(0, v.stock - (item.quantity || 1))
+            variantDeducted = true
+          }
+        }
+
+        // Re-calculate product totalStock across all variants
         if (Array.isArray(product.variants) && product.variants.length > 0) {
-          product.totalStock = product.variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+          product.totalStock = product.variants.reduce((sum, vr) => sum + (Number(vr.stock) || 0), 0)
         } else if (product.totalStock !== undefined) {
           product.totalStock = Math.max(0, product.totalStock - (item.quantity || 1))
         }
 
-        // Automatically set status to Out of Stock if totalStock is 0
+        // Automatically mark as Out of Stock if totalStock is 0
         if (product.totalStock === 0) {
           product.status = 'Out of Stock'
         }
@@ -131,6 +151,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     pricing: {
       subtotal: Number(pricing?.subtotal) || 0,
       shippingFee: Number(pricing?.shippingFee) || 0,
+      gstAmount: Number(pricing?.gstAmount) || 0,
+      gstPercentage: Number(pricing?.gstPercentage) || 0,
       totalWeightGrams: Number(pricing?.totalWeightGrams) || 0,
       discount: Number(pricing?.discount) || 0,
       finalTotal: Number(pricing?.finalTotal) || 0,
@@ -403,6 +425,63 @@ export const cancelCustomerOrder = asyncHandler(async (req, res) => {
 
   await order.save()
 
+  // ⚡ Restore Product inventory stock when cancelled
+  const restockedProducts = []
+  if (Array.isArray(order.items)) {
+    for (const item of order.items) {
+      if (item.productId) {
+        const product = await Product.findById(item.productId)
+        if (product) {
+          const qty = Number(item.quantity) || 1
+          let variantRestocked = false
+
+          if (item.variantId && Array.isArray(product.variants)) {
+            const v = product.variants.id(item.variantId) || product.variants.find((vr) => String(vr._id) === String(item.variantId))
+            if (v && v.stock !== undefined) {
+              v.stock = Number(v.stock) + qty
+              variantRestocked = true
+            }
+          }
+
+          if (!variantRestocked && Array.isArray(product.variants) && product.variants.length > 0) {
+            const v = product.variants.find((vr) => {
+              const matchColor = item.color ? (vr.color || '').toLowerCase() === item.color.toLowerCase() : true
+              const matchDesign = item.design ? (vr.design || '').toLowerCase() === item.design.toLowerCase() : true
+              const matchMaterial = item.material ? (vr.material || '').toLowerCase() === item.material.toLowerCase() : true
+              return matchColor && matchDesign && matchMaterial
+            }) || product.variants[0]
+
+            if (v && v.stock !== undefined) {
+              v.stock = Number(v.stock) + qty
+              variantRestocked = true
+            }
+          }
+
+          if (Array.isArray(product.variants) && product.variants.length > 0) {
+            product.totalStock = product.variants.reduce((sum, vr) => sum + (Number(vr.stock) || 0), 0)
+          } else if (product.totalStock !== undefined) {
+            product.totalStock = Number(product.totalStock) + qty
+          }
+
+          if (product.totalStock > 0 && product.status === 'Out of Stock') {
+            product.status = 'Active'
+          }
+
+          await product.save()
+          restockedProducts.push(product)
+        }
+      }
+    }
+  }
+
+  if (restockedProducts.length > 0) {
+    emitEvent('stock:updated', {
+      orderId: order.orderId,
+      updatedProducts: restockedProducts,
+      reason: 'Order Cancelled',
+    })
+  }
+
   // ⚡ Emit WebSocket events immediately: Notify admin room about cancellation
   emitEvent('order:cancelled', {
     orderId: order.orderId,
@@ -458,6 +537,12 @@ export const requestCustomerReturn = asyncHandler(async (req, res) => {
 
   // Calculate return window based on global settings or product setting
   const settings = await Setting.findOne().lean()
+
+  // If return policy is toggled OFF by admin, block return request
+  if (settings?.returnPolicy?.enabled === false) {
+    throw new ApiError(400, 'Product returns are currently disabled by the store.')
+  }
+
   const globalReturnDays = Number(settings?.returnPolicy?.returnWindowDays) || 7
 
   const deliveredTimeline = order.timeline?.slice().reverse().find((t) => t.status === 'Delivered')
@@ -597,6 +682,67 @@ export const handleReturnAction = asyncHandler(async (req, res) => {
       message: `Refund of ₹${order.returnDetails.refundAmount.toLocaleString('en-IN')} has been sent to customer's account (Ref: ${order.returnDetails.refundTransactionId}).`,
       time: now,
     })
+
+    // ⚡ Automatic Inventory Stock Refill upon Successful Refund
+    const refilledProducts = []
+    if (Array.isArray(order.items)) {
+      for (const item of order.items) {
+        if (item.productId) {
+          const product = await Product.findById(item.productId)
+          if (product) {
+            const qty = Number(item.quantity) || 1
+            let variantRefilled = false
+
+            // 1. Refill matching variant by variantId
+            if (item.variantId && Array.isArray(product.variants)) {
+              const v = product.variants.id(item.variantId) || product.variants.find((vr) => String(vr._id) === String(item.variantId))
+              if (v && v.stock !== undefined) {
+                v.stock = Number(v.stock) + qty
+                variantRefilled = true
+              }
+            }
+
+            // 2. Refill matching variant by attributes fallback
+            if (!variantRefilled && Array.isArray(product.variants) && product.variants.length > 0) {
+              const v = product.variants.find((vr) => {
+                const matchColor = item.color ? (vr.color || '').toLowerCase() === item.color.toLowerCase() : true
+                const matchDesign = item.design ? (vr.design || '').toLowerCase() === item.design.toLowerCase() : true
+                const matchMaterial = item.material ? (vr.material || '').toLowerCase() === item.material.toLowerCase() : true
+                return matchColor && matchDesign && matchMaterial
+              }) || product.variants[0]
+
+              if (v && v.stock !== undefined) {
+                v.stock = Number(v.stock) + qty
+                variantRefilled = true
+              }
+            }
+
+            // Re-calculate product totalStock across all variants
+            if (Array.isArray(product.variants) && product.variants.length > 0) {
+              product.totalStock = product.variants.reduce((sum, vr) => sum + (Number(vr.stock) || 0), 0)
+            } else if (product.totalStock !== undefined) {
+              product.totalStock = Number(product.totalStock) + qty
+            }
+
+            // If product was Out of Stock, reactivate it now that units returned
+            if (product.totalStock > 0 && product.status === 'Out of Stock') {
+              product.status = 'Active'
+            }
+
+            await product.save()
+            refilledProducts.push(product)
+          }
+        }
+      }
+    }
+
+    if (refilledProducts.length > 0) {
+      emitEvent('stock:updated', {
+        orderId: order.orderId,
+        updatedProducts: refilledProducts,
+        reason: 'Refund Completed - Stock Refilled',
+      })
+    }
   } else if (action === 'Refund Issue') {
     order.returnDetails.returnStatus = 'Refund Issue'
     order.returnDetails.refundIssueReason = refundIssueReason || adminRemarks || 'Bank transfer failed'
@@ -640,5 +786,22 @@ export const handleReturnAction = asyncHandler(async (req, res) => {
 export const markOrdersAsRead = asyncHandler(async (req, res) => {
   await Order.updateMany({ readByAdmin: false }, { $set: { readByAdmin: true } })
   return res.status(200).json(new ApiResponse(200, null, 'All orders marked as read.'))
+})
+
+/**
+ * @desc Download Official Invoice PDF (Generated directly via Puppeteer)
+ * @route GET /api/orders/:orderId/invoice-pdf
+ * @access Public / Customer / Admin
+ */
+export const downloadInvoicePdf = asyncHandler(async (req, res) => {
+  const { orderId } = req.params
+
+  const { pdfBuffer, filename } = await generateOrderInvoicePdf(orderId)
+
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+  res.setHeader('Content-Length', pdfBuffer.length)
+
+  return res.end(pdfBuffer)
 })
 

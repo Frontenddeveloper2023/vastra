@@ -1,5 +1,6 @@
 import HomeCMS from '../models/HomeCMS.js'
 import Product from '../models/Product.js'
+import { emitEvent } from '../services/socketService.js'
 
 // Standard JSON response helpers
 const sendSuccess = (res, data, message = 'Success', statusCode = 200) => {
@@ -133,6 +134,7 @@ export const updateHomeCMS = async (req, res, next) => {
       shippingReturns,
       termsConditions,
       privacyPolicy,
+      aboutUs,
     } = req.body
 
     let cms = await HomeCMS.findOne().sort({ createdAt: -1 })
@@ -148,8 +150,13 @@ export const updateHomeCMS = async (req, res, next) => {
     if (shippingReturns !== undefined) cms.shippingReturns = shippingReturns
     if (termsConditions !== undefined) cms.termsConditions = termsConditions
     if (privacyPolicy !== undefined) cms.privacyPolicy = privacyPolicy
+    if (aboutUs !== undefined) cms.aboutUs = aboutUs
 
     const saved = await cms.save()
+
+    // Real-time broadcast so user-side (and open admin pages) update instantly without refresh
+    emitEvent('cms:updated', { cms: saved })
+
     return sendSuccess(res, { cms: saved }, 'Home CMS updated successfully')
   } catch (error) {
     next(error)

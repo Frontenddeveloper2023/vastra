@@ -286,7 +286,7 @@ export default function CustomerLogin() {
                     border: '1px solid #7D152C'
                   }}
                 >
-                  Continue to Boutique
+                  Continue to Shop
                 </button>
 
                 <button

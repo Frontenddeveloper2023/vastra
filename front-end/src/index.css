@@ -15,9 +15,19 @@
   --animate-marquee: marquee 30s linear infinite;
   --animate-fade-in: fadeIn 0.8s ease-in-out;
   --animate-slide-up: slideUp 0.7s ease-out;
+  --animate-shimmer: shimmer 1.5s infinite;
 }
 
 /* ── Keyframe definitions ── */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 @keyframes marquee {
   0% {
     transform: translateX(0%);

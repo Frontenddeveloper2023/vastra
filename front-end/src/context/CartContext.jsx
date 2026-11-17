@@ -1,4 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import notify from '../utils/toast'
+import productService from '../services/productService'
+import { getSocket } from '../services/socket'
 
 const CartContext = createContext(null)
 
@@ -19,6 +22,89 @@ export const CartProvider = ({ children }) => {
   })
 
   const [isCartOpen, setIsCartOpen] = useState(false)
+  // Cache of product live data for stock verification { [productId]: productDoc }
+  const [productStockMap, setProductStockMap] = useState({})
+
+  // Fetch / refresh stock for products in the cart
+  const refreshCartStock = async () => {
+    try {
+      const productIds = Array.from(
+        new Set(cartItems.map((item) => item.productId || item.id).filter(Boolean))
+      )
+      if (productIds.length === 0) return
+
+      const fetched = await Promise.all(
+        productIds.map(async (pId) => {
+          try {
+            const data = await productService.getById(pId)
+            return data ? { [pId]: data } : null
+          } catch {
+            return null
+          }
+        })
+      )
+
+      const merged = {}
+      fetched.forEach((f) => {
+        if (f) Object.assign(merged, f)
+      })
+      setProductStockMap((prev) => ({ ...prev, ...merged }))
+    } catch {
+      // ignore
+    }
+  }
+
+  // Refresh cart stock on mount, when cart items change, and when drawer opens
+  useEffect(() => {
+    refreshCartStock()
+  }, [cartItems.length, isCartOpen])
+
+  // Listen to live WebSocket stock updates
+  useEffect(() => {
+    const socket = getSocket()
+    const handleStockUpdate = () => {
+      refreshCartStock()
+    }
+    socket.on('stock:updated', handleStockUpdate)
+    return () => {
+      socket.off('stock:updated', handleStockUpdate)
+    }
+  }, [])
+
+  // Helper to get max available stock for a cart item
+  const getItemMaxStock = (item) => {
+    if (!item) return 99
+    // 1. If stock was explicitly stored with item
+    let stockLimit = item.stock !== undefined ? Number(item.stock) : null
+
+    // 2. Check fresh live product document from productStockMap
+    const prod = productStockMap[item.productId || item.id]
+    if (prod) {
+      if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+        // match by variantId
+        let v = null
+        if (item.variantId) {
+          v = prod.variants.find((vr) => String(vr._id || vr.id) === String(item.variantId))
+        }
+        // match by attributes fallback
+        if (!v) {
+          v = prod.variants.find((vr) => {
+            const matchColor = item.color ? (vr.color || '').toLowerCase() === item.color.toLowerCase() : true
+            const matchDesign = item.design ? (vr.design || '').toLowerCase() === item.design.toLowerCase() : true
+            const matchMaterial = item.material ? (vr.material || '').toLowerCase() === item.material.toLowerCase() : true
+            return matchColor && matchDesign && matchMaterial
+          }) || prod.variants[0]
+        }
+        if (v && v.stock !== undefined) {
+          stockLimit = Number(v.stock)
+        }
+      } else if (prod.totalStock !== undefined) {
+        stockLimit = Number(prod.totalStock)
+      }
+    }
+
+    return stockLimit !== null && !isNaN(stockLimit) ? Math.max(0, stockLimit) : 99
+  }
 
   // Persist cart to localStorage
   useEffect(() => {
@@ -83,17 +169,18 @@ export const CartProvider = ({ children }) => {
     const size = product.size || 'Free Size'
 
     // Create a composite variant key so choosing different variants doesn't overwrite
-    const variantKey = `${product.id}__${color}__${design}__${material}__${size}`
+    const variantId = product.variantId || ''
+    const variantKey = `${product.id}__${variantId}__${color}__${design}__${material}__${size}`
 
     setCartItems((prevItems) => {
       const existing = prevItems.find((item) => {
-        const itemKey = item.variantKey || `${item.id}__${item.color || ''}__${item.design || ''}__${item.material || item.fabric || ''}__${item.size || 'Free Size'}`
+        const itemKey = item.variantKey || `${item.id}__${item.variantId || ''}__${item.color || ''}__${item.design || ''}__${item.material || item.fabric || ''}__${item.size || 'Free Size'}`
         return itemKey === variantKey
       })
 
       if (existing) {
         return prevItems.map((item) => {
-          const itemKey = item.variantKey || `${item.id}__${item.color || ''}__${item.design || ''}__${item.material || item.fabric || ''}__${item.size || 'Free Size'}`
+          const itemKey = item.variantKey || `${item.id}__${item.variantId || ''}__${item.color || ''}__${item.design || ''}__${item.material || item.fabric || ''}__${item.size || 'Free Size'}`
           return itemKey === variantKey
             ? { ...item, quantity: item.quantity + qty }
             : item
@@ -108,6 +195,9 @@ export const CartProvider = ({ children }) => {
         ...prevItems,
         {
           id: product.id,
+          productId: product.productId || product.id,
+          variantId: product.variantId || null,
+          variantIndex: product.variantIndex !== undefined ? product.variantIndex : null,
           variantKey,
           cartItemId: newCartItemId,
           title: product.title,
@@ -116,6 +206,7 @@ export const CartProvider = ({ children }) => {
           color,
           design,
           material,
+          stock: product.stock !== undefined ? Number(product.stock) : undefined,
           weight: Number(product.weight) || 800, // weight in grams
           price: numericPrice,
           originalPrice: numericOriginal,
@@ -130,19 +221,32 @@ export const CartProvider = ({ children }) => {
     }
   }
 
-  // Update item quantity (matches either cartItemId or id)
+  // Update item quantity (matches either cartItemId or id) with strict maxStock check
   const updateQuantity = (keyOrId, delta) => {
-    setCartItems((prev) =>
-      prev
-        .map((item) => {
-          if (item.cartItemId === keyOrId || item.id === keyOrId) {
-            const newQty = item.quantity + delta
-            return newQty > 0 ? { ...item, quantity: newQty } : null
+    setCartItems((prev) => {
+      let limitAlertTriggered = false
+
+      const updated = prev.map((item) => {
+        if (item.cartItemId === keyOrId || item.id === keyOrId) {
+          const currentStockLimit = getItemMaxStock(item)
+          const newQty = item.quantity + delta
+
+          if (delta > 0 && currentStockLimit > 0 && newQty > currentStockLimit) {
+            limitAlertTriggered = true
+            return item
           }
-          return item
-        })
-        .filter(Boolean)
-    )
+
+          return newQty > 0 ? { ...item, quantity: newQty } : null
+        }
+        return item
+      }).filter(Boolean)
+
+      if (limitAlertTriggered) {
+        notify.error(`Only available stock can be added to cart.`, { id: 'cart-stock-limit' })
+      }
+
+      return updated
+    })
   }
 
   // Remove single item (matches either cartItemId or id)
@@ -223,6 +327,8 @@ export const CartProvider = ({ children }) => {
         closeCart: () => setIsCartOpen(false),
         addToCart,
         updateQuantity,
+        getItemMaxStock,
+        refreshCartStock,
         removeFromCart,
         clearCart,
         totalCount,

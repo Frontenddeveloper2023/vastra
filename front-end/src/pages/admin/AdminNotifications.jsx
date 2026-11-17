@@ -158,17 +158,6 @@ export default function AdminNotifications() {
           </div>
         </div>
 
-        <div className="p-4 bg-white border border-[#EDE4D8] shadow-2xs rounded-none flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500">Restored in this session</p>
-            <p className="text-2xl font-bold font-normal text-emerald-600 mt-1">
-              {items.filter((i) => i.status === 'Restocked').length}
-            </p>
-          </div>
-          <div className="w-10 h-10 bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center">
-            <RotateCcw className="w-5 h-5" />
-          </div>
-        </div>
       </div>
 
       {/* ─── Filter & Search Bar ─── */}

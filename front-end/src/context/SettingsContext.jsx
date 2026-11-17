@@ -1,21 +1,23 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import getSocket from '../services/socket'
+import { API_BASE_URL } from '../config/apiConfig'
 
 const SettingsContext = createContext(null)
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-
 export const SettingsProvider = ({ children }) => {
   const [settings, setSettings] = useState({
-    storeName: 'Vastraa - The House of Sarees',
-    contactEmail: 'vastraa@gmail.com',
-    supportPhone: '+91 9807738888',
-    atelierAddress: 'Plot No 1, 3rd Street, Tambaram, Urapakkam, Chennai - 603 210',
-    googleMapsUrl: 'https://maps.google.com/?q=Tambaram+Urapakkam+Chennai',
-    instagram: 'https://instagram.com/vastraasarees',
-    facebook: 'https://facebook.com/vastraasarees',
-    twitter: 'https://x.com/vastraasarees',
-    youtube: 'https://youtube.com/@vastraasarees',
+    storeName: '',
+    logoUrl: '',
+    contactEmail: '',
+    supportPhone: '',
+    atelierAddress: '',
+    googleMapsUrl: '',
+    instagram: '',
+    facebook: '',
+    twitter: '',
+    youtube: '',
+    navAnnouncement: 'Pay Online & GET 10% OFF',
+    whatsappMessage: 'Hello Vastraa, I am browsing your saree collection and would like to know more details!',
     estimatedDays: '3 to 5 business days',
     shipping: {
       weightBased: {
@@ -33,6 +35,12 @@ export const SettingsProvider = ({ children }) => {
     adminPhone: '+91 9807738888',
     adminEmail: 'admin@vastraa.com',
     authMethod: 'OTP Only (SMS & Email)',
+    signatureUrl: '',
+    gst: {
+      enabled: false,
+      gstNumber: '',
+      percentage: 5,
+    },
   })
   const [loading, setLoading] = useState(true)
 
@@ -64,10 +72,13 @@ export const SettingsProvider = ({ children }) => {
     // ⚡ Real-time WebSocket listener for immediate instant settings updates
     const socket = getSocket()
     const onSettingsUpdated = (data) => {
-      if (data?.settings) {
+      const updated = data?.settings || data
+      if (updated) {
         setSettings((prev) => ({
           ...prev,
-          ...data.settings,
+          ...(typeof updated === 'object' ? updated : {}),
+          gst: updated.gst || data?.gst || prev.gst,
+          returnPolicy: updated.returnPolicy || data?.returnPolicy || prev.returnPolicy,
         }))
       }
     }

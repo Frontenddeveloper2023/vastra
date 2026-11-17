@@ -20,6 +20,8 @@ import {
   Edit2,
   Check,
   MoveHorizontal,
+  Printer,
+  Download,
 } from 'lucide-react'
 import Toast from '../../components/Toast'
 import {
@@ -30,9 +32,12 @@ import {
 } from '../../components/admin/AdminUI'
 import { getCmsImageUrl } from '../../utils/imageHelper'
 import { formatIndianDate, formatIndianTime } from '../../utils/dateHelper'
+import { downloadInvoicePdfDirect } from '../../utils/invoiceGenerator'
+import { useSettings } from '../../context/SettingsContext'
 import getSocket from '../../services/socket'
 
 export default function AdminOrders() {
+  const { settings } = useSettings()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('All')
@@ -44,6 +49,7 @@ export default function AdminOrders() {
   // Order Details Modal
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   // Status update states
   const [updatingStatus, setUpdatingStatus] = useState(false)
@@ -98,7 +104,7 @@ export default function AdminOrders() {
     setLoading(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const queryParams = new URLSearchParams({
         page: String(page),
         limit: String(pageSize),
@@ -159,9 +165,9 @@ export default function AdminOrders() {
       case 'On process':
         return ['On process', 'Shipped', 'Cancelled']
       case 'Shipped':
-        return ['Shipped', 'Delivered', 'Returned']
+        return ['Shipped', 'Delivered']
       case 'Delivered':
-        return ['Delivered', 'Returned']
+        return ['Delivered']
       case 'Cancelled':
         return ['Cancelled']
       case 'Returned':
@@ -189,7 +195,7 @@ export default function AdminOrders() {
     setUpdatingStatus(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
 
       const res = await fetch(`${API_BASE}/orders/admin/${selectedOrder._id}/status`, {
         method: 'PATCH',
@@ -232,7 +238,7 @@ export default function AdminOrders() {
     setUpdatingStatus(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
 
       const res = await fetch(`${API_BASE}/orders/admin/${order._id}/status`, {
         method: 'PATCH',
@@ -242,7 +248,7 @@ export default function AdminOrders() {
         },
         body: JSON.stringify({
           status: targetStatus,
-          message: customReason ? customReason.trim() : `Order marked as ${targetStatus} by admin.`,
+          message: customReason ? customReason.trim() : `Order marked as ${targetStatus} by Vastraa Store.`,
         }),
       })
 
@@ -301,18 +307,18 @@ export default function AdminOrders() {
   const getStatusBadge = (status) => {
     const s = String(status || '').toLowerCase()
     if (s.includes('return')) {
-      return 'bg-purple-50 text-purple-700 border-purple-200'
+      return 'bg-[#FAF5FF] text-[#7E22CE] border-[#D8B4FE]' // Flipkart/Amazon Purple Pill
     }
     if (s.includes('cancel')) {
-      return 'bg-rose-50 text-rose-700 border-rose-200'
+      return 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]' // Flipkart/Amazon Soft Red Pill
     }
     if (s.includes('deliver')) {
-      return 'bg-emerald-50 text-emerald-800 border-emerald-200'
+      return 'bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]' // Flipkart/Amazon Fresh Emerald Green Pill
     }
     if (s.includes('ship')) {
-      return 'bg-amber-50 text-amber-800 border-amber-200'
+      return 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]' // Amber / Orange in-transit Pill
     }
-    return 'bg-sky-50 text-sky-800 border-sky-200' // On process
+    return 'bg-[#F0F9FF] text-[#0284C7] border-[#BAE6FD]' // Fresh Sky/Blue on process Pill
   }
 
   return (
@@ -332,10 +338,10 @@ export default function AdminOrders() {
           <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
             Orders Management
           </h1>
-          
+
         </div>
 
-       
+
       </div>
 
       {/* Filter and Search Bar */}
@@ -366,11 +372,10 @@ export default function AdminOrders() {
                 setStatusFilter(st)
                 setPage(1)
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                statusFilter === st
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${statusFilter === st
                   ? 'bg-stone-900 text-white'
                   : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-              }`}
+                }`}
             >
               {st}
             </button>
@@ -382,7 +387,7 @@ export default function AdminOrders() {
       {/* Desktop / Tablet View (Horizontal Table with Drag-to-Scroll & Clickable Rows) */}
       <div className="hidden md:block space-y-2">
         <div className="flex items-center justify-between text-[11px] text-stone-500 px-1">
-       
+
           <span className="text-[10px] text-stone-400">Total: {totalOrders} orders</span>
         </div>
 
@@ -392,19 +397,18 @@ export default function AdminOrders() {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUpOrLeave}
           onMouseLeave={handleMouseUpOrLeave}
-          className={`bg-white border border-[#EDE4D8] rounded-xl shadow-2xs overflow-x-auto select-none transition-shadow ${
-            isHoldingMouse ? 'cursor-grabbing' : 'cursor-grab'
-          }`}
+          className={`bg-white border border-[#EDE4D8] rounded-xl shadow-2xs overflow-x-auto select-none transition-shadow ${isHoldingMouse ? 'cursor-grabbing' : 'cursor-grab'
+            }`}
           style={{ scrollBehavior: isHoldingMouse ? 'auto' : 'smooth' }}
         >
           <table className="w-full text-left border-collapse text-xs table-fixed min-w-[760px]">
             <colgroup>
-              <col style={{ width: '28%' }} />
-              <col style={{ width: '22%' }} />
+              <col style={{ width: '27%' }} />
+              <col style={{ width: '20%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '9%' }} />
               <col style={{ width: '13%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '10%' }} />
-              <col style={{ width: '17%' }} />
+              <col style={{ width: '19%' }} />
             </colgroup>
             <thead>
               <tr className="bg-[#FAF7F2] border-b border-[#EDE4D8] text-[#73655B] uppercase font-bold tracking-wider text-[11px]">
@@ -438,7 +442,7 @@ export default function AdminOrders() {
                   const isShipped = canonicalStatus === 'Shipped'
                   const isOnProcess = canonicalStatus === 'On process'
                   const isDelivered = canonicalStatus === 'Delivered'
-                  const isTerminal = ['Cancelled', 'Returned'].includes(canonicalStatus)
+                  const isTerminal = ['Cancelled', 'Delivered', 'Returned'].includes(canonicalStatus)
 
                   return (
                     <tr
@@ -487,7 +491,7 @@ export default function AdminOrders() {
                       {/* Customer with Direct Call & Email Actions */}
                       <td className="py-3 px-3 align-top text-xs" onClick={(e) => e.stopPropagation()}>
                         <span className="font-bold text-stone-900 block truncate">{row.customerName}</span>
-                        
+
                         {/* Direct Email Click Action */}
                         {row.customerEmail && row.customerEmail !== 'N/A' && (
                           <a
@@ -531,7 +535,7 @@ export default function AdminOrders() {
 
                       {/* Status Pill */}
                       <td className="py-3 px-3 align-top">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusBadge(row.status)}`}>
+                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold border leading-none shadow-2xs whitespace-nowrap ${getStatusBadge(row.status)}`}>
                           {row.status}
                         </span>
                       </td>
@@ -544,11 +548,10 @@ export default function AdminOrders() {
                             value={canonicalStatus}
                             disabled={updatingStatus || isTerminal}
                             onChange={(e) => handleDirectAdvanceStatus(row.order, e.target.value)}
-                            className={`px-2 py-1 text-[11px] font-semibold rounded border focus:outline-none transition-colors cursor-pointer ${
-                              isTerminal
+                            className={`px-2.5 py-1 text-[11px] font-semibold rounded-md border shadow-2xs focus:outline-none transition-colors cursor-pointer min-w-[105px] ${isTerminal
                                 ? 'bg-stone-100 text-stone-500 border-stone-200 cursor-not-allowed'
                                 : 'bg-white text-stone-900 border-stone-300 hover:border-stone-500'
-                            }`}
+                              }`}
                             title={isTerminal ? `Order is ${canonicalStatus} and cannot be reverted.` : 'Change Order Status'}
                           >
                             {['On process', 'Shipped', 'Delivered', 'Cancelled', 'Returned'].map((st) => {
@@ -604,7 +607,7 @@ export default function AdminOrders() {
             const isShipped = canonicalStatus === 'Shipped'
             const isOnProcess = canonicalStatus === 'On process'
             const isDelivered = canonicalStatus === 'Delivered'
-            const isTerminal = ['Cancelled', 'Returned'].includes(canonicalStatus)
+            const isTerminal = ['Cancelled', 'Delivered', 'Returned'].includes(canonicalStatus)
 
             return (
               <div
@@ -625,7 +628,7 @@ export default function AdminOrders() {
                     <span className="font-bold text-sm text-[#6D021B] block">
                       ₹{row.totalAmount.toLocaleString('en-IN')}
                     </span>
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadge(row.status)}`}>
+                    <span className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border leading-none whitespace-nowrap ${getStatusBadge(row.status)}`}>
                       {row.status}
                     </span>
                   </div>
@@ -666,7 +669,7 @@ export default function AdminOrders() {
                     <span className="text-stone-500">City / State:</span>
                     <span>{row.shippingCity}</span>
                   </div>
-                  
+
                   {/* Action links */}
                   <div className="flex items-center justify-between pt-1 border-t border-stone-200/60 text-[11px]">
                     {row.customerPhone && row.customerPhone !== 'N/A' ? (
@@ -710,11 +713,10 @@ export default function AdminOrders() {
                       value={canonicalStatus}
                       disabled={updatingStatus || isTerminal}
                       onChange={(e) => handleDirectAdvanceStatus(row.order, e.target.value)}
-                      className={`px-2 py-1.5 text-xs font-semibold rounded border focus:outline-none transition-colors cursor-pointer ${
-                        isTerminal
+                      className={`px-2 py-1.5 text-xs font-semibold rounded border focus:outline-none transition-colors cursor-pointer ${isTerminal
                           ? 'bg-stone-100 text-stone-500 border-stone-200 cursor-not-allowed'
                           : 'bg-white text-stone-900 border-stone-300'
-                      }`}
+                        }`}
                     >
                       {['On process', 'Shipped', 'Delivered', 'Cancelled', 'Returned'].map((st) => {
                         const isAllowed = getAllowedNextStatuses(canonicalStatus).includes(st)
@@ -760,17 +762,39 @@ export default function AdminOrders() {
                 <span className="text-[10px] uppercase font-bold text-stone-400 tracking-wider">
                   Order Management
                 </span>
-                <h3 className="font-serif text-lg font-bold text-stone-900">
+                <h3 className="font-normal text-lg font-bold text-stone-900">
                   Order #{selectedOrder.orderId}
                 </h3>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={downloadingPdf}
+                  onClick={async () => {
+                    try {
+                      setDownloadingPdf(true)
+                      await downloadInvoicePdfDirect(selectedOrder.orderId || selectedOrder._id)
+                    } catch (err) {
+                      console.error(err)
+                      alert('Failed to download invoice PDF')
+                    } finally {
+                      setDownloadingPdf(false)
+                    }
+                  }}
+                  title="Download official GST tax invoice PDF via Puppeteer"
+                  className="px-3 py-1.5 bg-[#6D021B] hover:bg-[#580014] text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors disabled:opacity-60"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>{downloadingPdf ? 'Downloading PDF...' : 'Download Invoice PDF'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-1.5 text-stone-400 hover:text-stone-900 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 space-y-6">
@@ -866,6 +890,12 @@ export default function AdminOrders() {
                   <span>Shipping Fee:</span>
                   <span>₹{(selectedOrder.pricing?.shippingFee || 0).toLocaleString('en-IN')}</span>
                 </div>
+                {selectedOrder.pricing?.gstAmount > 0 && (
+                  <div className="flex justify-between text-stone-600">
+                    <span>GST ({selectedOrder.pricing.gstPercentage || 5}%):</span>
+                    <span>₹{selectedOrder.pricing.gstAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
                 <div className="border-t border-stone-200 pt-1.5 flex justify-between font-bold text-sm text-stone-900">
                   <span>Total Paid:</span>
                   <span className="text-[#6D021B]">₹{(selectedOrder.pricing?.finalTotal || 0).toLocaleString('en-IN')}</span>

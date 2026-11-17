@@ -26,20 +26,26 @@ import {
   FileBarChart,
   RotateCcw,
 } from 'lucide-react'
-import vastraaLogo from '../../../public/slides/logo.png'
 import { useAdminAuth } from '../../context/AdminAuthContext'
+import { useSettings } from '../../context/SettingsContext'
 import productService from '../../services/productService'
 import { formatIndianTime } from '../../utils/dateHelper'
 import { getCmsImageUrl } from '../../utils/imageHelper'
-import getSocket from '../../services/socket'
+import { getSocket } from '../../services/socket'
+import GlobalNetworkBanner from '../../components/GlobalNetworkBanner'
 
 export default function AdminLayout() {
   const { admin, logout } = useAdminAuth()
+  const { settings } = useSettings()
   const confirm = useConfirm()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notificationOpen, setNotificationOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [productCount, setProductCount] = useState(0)
+  const [orderCount, setOrderCount] = useState(0)
+  const [returnCount, setReturnCount] = useState(0)
+  const [customerCount, setCustomerCount] = useState(0)
   const notificationRef = useRef(null)
   const location = useLocation()
   const navigate = useNavigate()
@@ -68,7 +74,7 @@ export default function AdminLayout() {
     setLoadingNotifications(true)
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       const dismissed = new Set(getDismissedIds())
 
       // Parallel fetch for stock alerts and all live orders
@@ -82,32 +88,68 @@ export default function AdminLayout() {
       const alertList = stockData?.alerts || []
       const orderList = ordersRes?.success && ordersRes?.data?.orders ? ordersRes.data.orders : []
 
-      const stockNotifications = alertList
-        .filter((item) => !dismissed.has(String(item.id)))
-        .map((item) => {
-          const isOutOfStock = item.status === 'Out of Stock' || item.stock <= 0
-          return {
-            id: item.id,
-            productId: item.productId,
-            variantIndex: item.variantIndex,
-            type: isOutOfStock ? 'out_of_stock' : 'low_stock',
-            title: isOutOfStock
-              ? `Out of Stock: ${item.title}`
-              : `Low Stock Alert: ${item.stock} unit${item.stock === 1 ? '' : 's'} left`,
-            subtitle: `${item.variantName ? `${item.variantName} • ` : ''}${item.title} has reached Stock Alert Limit`,
-            time: 'Live',
-            target: '/admin/notifications',
-            isRead: false,
-            badgeColor: isOutOfStock
-              ? 'bg-red-50 text-red-700 border-red-200'
-              : 'bg-amber-50 text-amber-800 border-amber-200',
-            icon: isOutOfStock ? PackageX : AlertTriangle,
-            image: getCmsImageUrl(item.image),
+      // Dynamically calculate live counts for sidebar badges
+      if (ordersRes?.success) {
+        setOrderCount(ordersRes?.data?.total || orderList.length)
+        const returnOrders = orderList.filter((ord) => {
+          const s = (ord.status || '').toLowerCase()
+          return s.includes('return') || ord.returnDetails?.returnStatus || ord.returnDetails?.status
+        })
+        setReturnCount(returnOrders.length)
+      }
+
+      // Fetch products count for sidebar
+      productService.getAll({ limit: 1000 }).then((prodData) => {
+        const pList = Array.isArray(prodData) ? prodData : prodData?.products || []
+        setProductCount(pList.length)
+      }).catch(() => { })
+
+      // Fetch customers count for sidebar
+      fetch(`${API_BASE}/customers`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((r) => r.json())
+        .then((custRes) => {
+          if (custRes?.success && Array.isArray(custRes.data)) {
+            setCustomerCount(custRes.data.length)
           }
         })
+        .catch(() => { })
+
+      const stockNotifications = alertList.map((item) => {
+        const isOutOfStock = item.status === 'Out of Stock' || item.stock <= 0
+        return {
+          id: item.id,
+          productId: item.productId,
+          variantIndex: item.variantIndex,
+          type: isOutOfStock ? 'out_of_stock' : 'low_stock',
+          title: isOutOfStock
+            ? `Out of Stock: ${item.title}`
+            : `Low Stock Alert: ${item.stock} unit${item.stock === 1 ? '' : 's'} left`,
+          subtitle: `${item.variantName ? `${item.variantName} • ` : ''}${item.title} has reached Stock Alert Limit (${item.stock} remaining)`,
+          time: 'Live',
+          target: '/admin/notifications',
+          isRead: false,
+          badgeColor: isOutOfStock
+            ? 'bg-red-50 text-red-700 border-red-200'
+            : 'bg-amber-50 text-amber-800 border-amber-200',
+          icon: isOutOfStock ? PackageX : AlertTriangle,
+          image: getCmsImageUrl(item.image),
+        }
+      })
 
       const orderNotifications = orderList
-        .filter((ord) => !ord.readByAdmin && !dismissed.has(String(ord._id)))
+        .filter((ord) => {
+          const isReturn =
+            ord.status === 'Return Requested' ||
+            ord.returnDetails?.returnStatus === 'Requested' ||
+            ord.returnDetails?.status === 'Requested'
+          // Always show return requests unless explicitly dismissed by admin clicking trash/read
+          if (isReturn) {
+            return !dismissed.has(String(ord._id))
+          }
+          return !ord.readByAdmin && !dismissed.has(String(ord._id))
+        })
         .map((ord) => {
           const isCancelled = ord.status === 'Cancelled'
           const isReturn =
@@ -120,21 +162,21 @@ export default function AdminLayout() {
             title: isReturn
               ? `Return Requested: #${ord.orderId}`
               : isCancelled
-              ? `Order Cancelled: #${ord.orderId}`
-              : `New Order: #${ord.orderId}`,
+                ? `Order Cancelled: #${ord.orderId}`
+                : `New Order: #${ord.orderId}`,
             subtitle: isReturn
               ? `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} requested a return: ${ord.returnDetails?.reason || 'Product return'}`
               : isCancelled
-              ? `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} cancelled their order of ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`
-              : `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} ordered ${ord.items?.length || 1} saree(s) • ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`,
+                ? `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} cancelled their order of ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`
+                : `${ord.customerInfo?.name || ord.shippingAddress?.name || 'Customer'} ordered ${ord.items?.length || 1} saree(s) • ₹${(ord.pricing?.finalTotal || 0).toLocaleString('en-IN')}`,
             time: formatIndianTime(ord.updatedAt || ord.createdAt),
             target: isReturn ? '/admin/returns' : '/admin/orders',
-            isRead: Boolean(ord.readByAdmin),
+            isRead: isReturn ? false : Boolean(ord.readByAdmin),
             badgeColor: isReturn
               ? 'bg-amber-50 text-amber-800 border-amber-200'
               : isCancelled
-              ? 'bg-red-50 text-red-700 border-red-200'
-              : 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                ? 'bg-red-50 text-red-700 border-red-200'
+                : 'bg-emerald-50 text-emerald-800 border-emerald-200',
             icon: isReturn ? RotateCcw : isCancelled ? XCircle : ShoppingBag,
             image: getCmsImageUrl(ord.items?.[0]?.image),
           }
@@ -172,10 +214,17 @@ export default function AdminLayout() {
       fetchStockAlerts()
     }
 
-    const onStockUpdated = () => {
+    const onStockUpdated = (data) => {
       fetchStockAlerts()
+      if (data?.message) {
+        notify.warning(`Stock Alert: ${data.message}`)
+      }
     }
 
+    socket.on('connect', () => {
+      socket.emit('join:admin')
+      fetchStockAlerts()
+    })
     socket.on('order:new', onOrderNew)
     socket.on('order:cancelled', onOrderCancelled)
     socket.on('return:new', onReturnNew)
@@ -238,7 +287,7 @@ export default function AdminLayout() {
     if (n.type === 'new_order') {
       try {
         const token = localStorage.getItem('vastraa_admin_token')
-        const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+        const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
         await fetch(`${API_BASE}/orders/admin/mark-read`, {
           method: 'PATCH',
           headers: { Authorization: `Bearer ${token}` },
@@ -264,7 +313,7 @@ export default function AdminLayout() {
     // Update backend order status as read
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       await fetch(`${API_BASE}/orders/admin/mark-read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
@@ -282,7 +331,7 @@ export default function AdminLayout() {
 
     try {
       const token = localStorage.getItem('vastraa_admin_token')
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const API_BASE = (import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000').replace(/\/+$/, '') + '/api'
       await fetch(`${API_BASE}/orders/admin/mark-read`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${token}` },
@@ -294,13 +343,13 @@ export default function AdminLayout() {
 
   const navItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
-    { name: 'Products ', path: '/admin/products', icon: Package, badge: '24' },
-    { name: 'Orders', path: '/admin/orders', icon: ShoppingBag, badge: '5' },
+    { name: 'Products', path: '/admin/products', icon: Package },
+    { name: 'Orders', path: '/admin/orders', icon: ShoppingBag },
     { name: 'Returns', path: '/admin/returns', icon: RotateCcw },
     { name: 'Home CMS', path: '/admin/home-cms', icon: Layers },
     { name: 'Customers', path: '/admin/customers', icon: Users },
     { name: 'Reports', path: '/admin/reports', icon: FileBarChart },
-    { name: 'Stock Alerts', path: '/admin/notifications', icon: Bell, badge: unreadCount > 0 ? unreadCount.toString() : null },
+    { name: 'Stock Alerts', path: '/admin/notifications', icon: Bell },
     { name: 'Settings', path: '/admin/settings', icon: Settings },
   ]
 
@@ -330,13 +379,13 @@ export default function AdminLayout() {
         <div className="h-18 px-5 border-b border-[#EDE4D8] flex items-center justify-between">
           <Link to="/admin" className="flex items-center gap-3">
             <img
-              src={vastraaLogo}
-              alt="Vastraa"
-              className="w-10 h-10  object-cover  shadow-xs"
+              src={settings?.logoUrl ? getCmsImageUrl(settings.logoUrl) : `${import.meta.env.BASE_URL || '/'}slides/logo.png`}
+              alt={settings?.storeName || 'Vastraa'}
+              className="w-10 h-10 object-contain shadow-xs rounded-md bg-stone-50 border border-[#EDE4D8]"
             />
             <div>
               <span className="font-normal text-lg font-bold tracking-[0.14em] text-[#6D021B] block leading-none">
-                VASTRAA
+                {settings?.storeName ? settings.storeName.split('-')[0].trim().toUpperCase() : 'VASTRAA'}
               </span>
               <span className="text-[10px] uppercase tracking-[0.2em] font-semibold text-[#DEA53B] block mt-0.5">
                 Admin Portal
@@ -448,6 +497,9 @@ export default function AdminLayout() {
 
       {/* ─── Main Content Wrapper ─── */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Global Offline Network Alert */}
+        <GlobalNetworkBanner />
+
         {/* Top Navbar */}
         <header className="h-18 bg-white border-b border-[#EDE4D8] sticky top-0 z-30 px-4 sm:px-6 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -531,9 +583,8 @@ export default function AdminLayout() {
                           <div
                             key={n.id}
                             onClick={() => handleNotificationClick(n)}
-                            className={`p-3 flex items-start gap-3 transition-colors cursor-pointer group ${
-                              !n.isRead ? 'bg-[#FFFDF9] hover:bg-[#FAF7F2]' : 'bg-white hover:bg-[#FAF7F2]'
-                            }`}
+                            className={`p-3 flex items-start gap-3 transition-colors cursor-pointer group ${!n.isRead ? 'bg-[#FFFDF9] hover:bg-[#FAF7F2]' : 'bg-white hover:bg-[#FAF7F2]'
+                              }`}
                           >
                             {/* Product Image Thumbnail */}
                             <div className="relative w-12 h-14 bg-stone-100 border border-[#EDE4D8] overflow-hidden shrink-0 rounded-none">
@@ -556,9 +607,8 @@ export default function AdminLayout() {
 
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-1">
-                                <p className={`text-xs leading-snug truncate ${
-                                  !n.isRead ? 'font-bold text-[#1F1713]' : 'font-medium text-stone-700'
-                                }`}>
+                                <p className={`text-xs leading-snug truncate ${!n.isRead ? 'font-bold text-[#1F1713]' : 'font-medium text-stone-700'
+                                  }`}>
                                   {n.title}
                                 </p>
                                 <span className="text-[10px] text-green-600 shrink-0">{n.time}</span>
